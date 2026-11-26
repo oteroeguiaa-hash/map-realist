@@ -10,6 +10,14 @@ import { Flora } from './flora.js';
 import { ModelBank } from './models.js';
 import { Player } from './player.js';
 import { Fauna } from './fauna.js';
+import { Roads, spurFromSpawn, stampRoad } from './roads.js';
+import { Lumber } from './lumber.js';
+import { Builder, PIECES } from './build.js';
+
+// sauvegarde locale (arbres abattus, bois, constructions) : retrouvée au retour sur ce téléphone
+const SAVE_KEY = 'mapRealist.save.v1';
+const loadSave = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } };
+const writeSave = (o) => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* stockage indisponible */ } };
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Props } from './props.js';
 import { Buggy } from './buggy.js';
@@ -71,6 +79,10 @@ async function boot() {
     ]);
     G.world = world;
     const data = new TerrainData(world, tbuf);
+    // nouvelle route de terre : de la plage de départ jusqu'à la grande boucle autour de l'île
+    const spur = spurFromSpawn(world);
+    if (spur) stampRoad(data, spur);
+    const allRoads = world.roads.concat(spur ? [spur] : []);
     data.makeTextures();
     G.terrain = data;
 
@@ -141,6 +153,9 @@ async function boot() {
     const props = new Props(scene, data, world, null, bank);
     await props.init(ASSETS);
     G.props = props;
+    const roads = new Roads(scene, data, world);
+    await roads.init(ASSETS, allRoads);
+    G.roads = roads;
     const sea = new Sea(scene, data, world);
     G.sea = sea;
 
@@ -151,6 +166,26 @@ async function boot() {
     G.player = player;
     const fauna = new Fauna(scene, data, world, veg, bank);
     G.fauna = fauna;
+    // abattage et construction
+    const lumber = new Lumber(scene, veg, data, props);
+    const builder = new Builder(scene, data, props);
+    await builder.init(ASSETS);
+    G.lumber = lumber; G.builder = builder;
+    const groundAt = (x, z) => Math.max(data.height(x, z), builder.heightAt(x, z));
+    const onBuilt = (x, z) => builder.heightAt(x, z) > data.height(x, z) + 0.03;
+    const groundNormal = (x, z, out, e) => {
+      if (!builder.pieces.length || (!onBuilt(x, z) && !onBuilt(x + 0.5, z) && !onBuilt(x, z + 0.5) && !onBuilt(x - 0.5, z) && !onBuilt(x, z - 0.5))) return data.normal(x, z, out, e);
+      const k = 0.3;
+      return out.set(groundAt(x - k, z) - groundAt(x + k, z), 2 * k, groundAt(x, z - k) - groundAt(x, z + k)).normalize();
+    };
+    player.groundAt = groundAt;
+    let saveT = null;
+    const save = () => { clearTimeout(saveT); saveT = setTimeout(() => writeSave({ ...lumber.save(), builds: builder.save() }), 400); };
+    {
+      const sv = loadSave();
+      if (sv) { lumber.load(sv); builder.load(sv.builds); wl.setCanopy(veg.canopyList()); }
+    }
+    lumber.onChange = () => { save(); wl.setCanopy(veg.canopyList()); ui.toast(`+ du bois · tu as ${lumber.wood} bûches · bouton Construire`); };
     const fx = new Effects(scene, data, world);
     G.fx = fx;
     buggy.fx = fx;
@@ -163,8 +198,15 @@ async function boot() {
       const kind = player.waterLevel(p.x, p.z) - h > 0.15 ? 'water' : h < 2.2 ? 'sand' : 'leaves';
       sound.footstep(kind, clamp(v / 4, 0.4, 1.2));
     };
-    player.onHit = (p, kind) => {
-      if (kind === 'tree') { fx.sand(p, new THREE.Vector3(), 9, 2); ui.toast('Toc !'); }
+    buggy.ground = groundAt; buggy.groundNormal = groundNormal; buggy.onBuilt = onBuilt;
+    player.onHit = (p, kind, tree) => {
+      if (kind === 'tree' && tree) {
+        fx.burst(p, 14, [0.78, 0.66, 0.46], 2.2, 2.5, 0.06, 0.9); // copeaux clairs
+        sound.chop();
+        const left = lumber.hit(tree.i, player.pos);
+        if (left > 0) ui.toast(left === 1 ? 'Encore 1 coup…' : `Encore ${left} coups`);
+        else { ui.toast('Ça craque… l’arbre tombe !'); sound.creak(); }
+      }
       fauna.scare(p, 14);
     };
     const sound = new Sound();
@@ -249,8 +291,21 @@ async function boot() {
       player.place(x, z, h + Math.PI);
       rig.setMode('foot');
     }
+    lumber.onImpact = (rec, speed, first) => {
+      const p = new THREE.Vector3();
+      for (let k = 2; k <= 8; k++) { lumber.pointAt(rec, rec.L * k / 8, p); fx.burst(p, first ? 6 : 2, [0.55, 0.47, 0.36], 3, 1.6, 0.25, 1.6); }
+      lumber.pointAt(rec, rec.L * 0.9, p);
+      if (first) fx.burst(p, 40, [0.2, 0.34, 0.1], 6, 3.5, 0.09, 2.2); // feuilles arrachées
+      const d = p.distanceTo(camera.position), vol = clamp(speed / 12, 0.2, 1) * clamp(30 / (d + 5), 0, 1);
+      sound.crash(vol);
+      if (G.mode === 'foot' && d < 30) player.shake = Math.max(player.shake, clamp(speed / 10, 0, 1) * (1 - d / 30));
+    };
     function actionLabel() {
       if (rig.mode === 'drone') return null;
+      if (G.mode === 'foot' && builder.active) {
+        const pv = builder.preview(player, lumber.wood);
+        return pv && pv.ok ? pv.label : `Pas assez de bois (${PIECES[builder.kind].cost})`;
+      }
       if (G.mode === 'buggy') return Math.abs(buggy.speed) < 4 ? 'Descendre' : null;
       if (player.pos.distanceTo(buggy.pos) < 3.4) return 'Monter dans le buggy';
       const p = player.nearPickup();
@@ -264,6 +319,10 @@ async function boot() {
       else if (label === 'Monter dans le buggy') enterBuggy();
       else if (label.startsWith('Ramasser')) { const p = player.nearPickup(); if (p) ui.toast(player.pick(p) + ' · bouton Outil pour changer'); }
       else if (label === 'Frapper') player.strike();
+      else if (label.startsWith('Poser')) {
+        const sh = builder.confirm();
+        if (sh) { lumber.wood -= PIECES[sh.kind].cost; save(); ui.toast(`${PIECES[sh.kind].label} construit · il te reste ${lumber.wood} bûches`); }
+      }
     }
     const buggyCol = [{ x: 0, z: 0, r: 1.05 }, { x: 0, z: 0, r: 1.05 }, { x: 0, z: 0, r: 1.05 }];
     const IDLE = { throttle: 0, steer: 0, brake: 1 };
@@ -319,7 +378,13 @@ async function boot() {
       if (input.reset) buggy.reset();
       const act = actionLabel();
       if (input.act) doAction(act);
-      if (input.tool && G.mode === 'foot') { const m = player.cycleTool(); if (m) ui.toast(m); }
+      if (input.tool && G.mode === 'foot') { const m = builder.active ? 'Pièce : ' + builder.cycle() : player.cycleTool(); if (m) ui.toast(m); }
+      if (input.build) {
+        builder.active = !builder.active && G.mode === 'foot';
+        ui.toast(builder.active ? 'Mode construction · Outil pour changer de pièce, bouton orange pour poser' : 'Construction terminée');
+      }
+      if (G.mode !== 'foot' || rig.mode === 'drone') builder.active = false;
+      if (!builder.active) builder.preview(player, 0);
       buggy.engineOn = G.mode === 'buggy' ? 1 : 0;
       if (G.mode === 'buggy') {
         buggy.update(dt, rig.mode !== 'drone' ? input : IDLE);
@@ -379,6 +444,8 @@ async function boot() {
       veg.update(camera, dt);
       water.update(camera, sky.weather);
       props.update(camera, dt);
+      roads.update(camera);
+      lumber.update(dt);
       sea.update(dt, camera);
       fauna.update(dt, camera, G.mode === 'foot' && rig.mode !== 'drone' ? player.pos : null);
       fx.update(dt, camera, sky);
@@ -386,9 +453,11 @@ async function boot() {
       const drone = rig.mode === 'drone';
       ui.hud({
         speed: drone ? rig.speed : G.mode === 'buggy' ? Math.abs(buggy.speed) : player.speed,
-        mode: drone ? 'Caméra libre' : G.mode === 'buggy' ? 'Buggy' : player.swimming ? 'À la nage' : 'À pied',
+        mode: drone ? 'Caméra libre' : G.mode === 'buggy' ? `Buggy · ${buggy.gear < 0 ? 'R' : buggy.gear + 'e'}` : builder.active ? 'Construction' : player.swimming ? 'À la nage' : 'À pied',
+        wood: lumber.wood, build: G.mode === 'foot' && !drone && (lumber.wood > 0 || builder.pieces.length > 0 || builder.active), building: builder.active,
+        toolLabel: builder.active ? 'Pièce : ' + PIECES[builder.kind].label : 'Outil',
         upDown: drone || (G.mode === 'foot' && player.swimming), inBuggy: G.mode === 'buggy' && !drone, drone,
-        action: act, tools: G.mode === 'foot' && !drone && player.inv.length > 0, fps: G.fpsAvg,
+        action: act, tools: G.mode === 'foot' && !drone && (player.inv.length > 0 || builder.active), fps: G.fpsAvg,
       });
       camera.updateMatrixWorld();
       post.render(dt, U.uTime.value, G.expo);

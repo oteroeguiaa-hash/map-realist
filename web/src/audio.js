@@ -64,6 +64,38 @@ export class Sound {
     s.connect(f); f.connect(g); g.connect(this.master);
     s.start(t, Math.random() * 1.5); s.stop(t + len + 0.05);
   }
+  // coup de hache dans le bois : claquement sec + résonance sourde
+  chop(vol = 1) {
+    const c = this.ctx; if (!c) return;
+    const t = c.currentTime;
+    const s = c.createBufferSource(); s.buffer = this.white;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 1.2;
+    const g = c.createGain(); g.gain.setValueAtTime(0.5 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random()); s.stop(t + 0.12);
+    const o = c.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(90, t + 0.15);
+    const og = c.createGain(); og.gain.setValueAtTime(0.35 * vol, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(og); og.connect(this.master); o.start(t); o.stop(t + 0.2);
+  }
+  // craquement du tronc qui cède
+  creak() {
+    const c = this.ctx; if (!c) return;
+    const t = c.currentTime, o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(70, t);
+    for (let k = 0; k < 8; k++) o.frequency.setValueAtTime(55 + Math.random() * 60, t + k * 0.11);
+    f.type = 'bandpass'; f.frequency.value = 600; f.Q.value = 3;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.18, t + 0.15); g.gain.linearRampToValueAtTime(0, t + 1.0);
+    o.connect(f); f.connect(g); g.connect(this.master); o.start(t); o.stop(t + 1.05);
+  }
+  // l'arbre s'écrase au sol : grondement + branches qui cassent
+  crash(vol = 1) {
+    const c = this.ctx; if (!c) return;
+    const t = c.currentTime;
+    const s = c.createBufferSource(); s.buffer = this.white;
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(1800, t); f.frequency.exponentialRampToValueAtTime(120, t + 1.2);
+    const g = c.createGain(); g.gain.setValueAtTime(0.7 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random()); s.stop(t + 1.5);
+    for (let k = 0; k < 6; k++) setTimeout(() => this.chop(0.35 * vol), 40 + Math.random() * 500);
+  }
   bird(vol) {
     const c = this.ctx, o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
     const f0 = 1800 + Math.random() * 2600, n = 2 + Math.floor(Math.random() * 4);

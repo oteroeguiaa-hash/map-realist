@@ -45,3 +45,11 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Fondu entre arbres proches et lointains raccourci : moins de motif tramé.
 - Buggy : boîte automatique 5 vitesses + marche arrière, courbe de couple, pneus à modèle de Pacejka (angle de dérive), adhérence selon la charge, cercle d'adhérence (dérapages au gaz), barres anti-roulis, amortisseurs compression/détente, frein moteur, Ackermann, traînée réaliste. Test : 0–80 km/h en ~4,5 s, stable.
 - Son : crissement des pneus qui glissent, bruits de pas (sable, feuilles, eau). Champ de vision qui s'élargit avec la vitesse.
+
+## 26/11/2026 — Démo web : route de terre, abattage d'arbres, construction
+
+- Route de terre rendue en vrai : bande de terre battue (texture Farm Soil) avec ornières, bords fondus dans l'herbe, sur toute la boucle de l'île et ses embranchements, plus une nouvelle route qui part de la plage de départ.
+- Abattage : 3 coups pour un petit arbre, 8 pour un grand. L'arbre craque, bascule autour de sa charnière sous la gravité (pendule inversé), rebondit, projette poussière et feuilles, puis reste couché. La souche reste. Le tronc couché devient un obstacle.
+- Bois récolté (3 ou 8 bûches) ; construction en rondins : mur (6), plancher (8), rampe à buggy (10). Les pièces s'alignent sur une grille, portent le joueur et le buggy.
+- Sauvegarde dans le téléphone (localStorage) : arbres abattus, bois, constructions retrouvés au retour.
+- Testé (Chromium logiciel) : chute d'un arbre de 22 m (repos à 88°), pose des trois pièces, route visible, conduite stable.

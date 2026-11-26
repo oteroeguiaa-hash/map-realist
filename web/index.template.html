@@ -59,7 +59,9 @@
   #knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(243,239,230,.85); box-shadow: 0 2px 10px rgba(0,0,0,.35); pointer-events: none; }
   #rbtns { position: absolute; right: max(18px, calc(env(safe-area-inset-right, 0px) + 10px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
   #bBrake, #bJump { padding: 18px 22px; font-size: 16px; }
-  .rrow { display: flex; gap: 10px; }
+  .rrow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  #wood { margin-top: 6px; font-family: var(--display); font-size: 15px; letter-spacing: .06em; color: #f1d7a8; }
+  #wood b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .act { background: var(--ember); color: #1a0d06; border-color: transparent; padding: 14px 20px; font-size: 16px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #credits { position: absolute; z-index: 12; inset: 0; overflow-y: auto; background: var(--glass-strong); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)); padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
@@ -93,7 +95,7 @@
   <canvas id="c" aria-label="Vue 3D de l'île"></canvas>
 
   <div id="hud" hidden>
-    <div id="speedo"><span id="spd">0</span><small>km/h</small><div id="mode">Buggy</div></div>
+    <div id="speedo"><span id="spd">0</span><small>km/h</small><div id="mode">Buggy</div><div id="wood" hidden><b id="woodN">0</b> bûches</div></div>
     <div id="fps" hidden></div>
     <button id="bMenu" class="round" aria-label="Ouvrir le menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -106,6 +108,7 @@
       </div>
       <button id="bAct" class="pill act" hidden></button>
       <div class="rrow">
+        <button id="bBuild" class="pill" hidden>Construire</button>
         <button id="bTool" class="pill" hidden>Outil</button>
         <button id="bCam" class="pill">Caméra</button>
       </div>
@@ -153,8 +156,8 @@
     <div class="grp">
       <button id="bReset" class="pill">Remettre le buggy sur ses roues</button>
       <button id="bCredits" class="pill">Crédits des modèles 3D</button>
-      <p class="note">Tactile : joystick pour marcher (poussé à fond pour courir), glisse à droite pour regarder. Le bouton orange change selon ce qui t’entoure : monter dans le buggy, ramasser, frapper.</p>
-      <p class="note">Clavier : ZQSD ou flèches, Maj pour courir, espace pour sauter (frein dans le buggy), F pour l’action, T pour changer d’outil, C pour la caméra. Dans l’eau, E et A pour remonter et plonger.</p>
+      <p class="note">Tactile : joystick pour marcher (poussé à fond pour courir), glisse à droite pour regarder. Le bouton orange change selon ce qui t’entoure : monter dans le buggy, ramasser, frapper. Abats un arbre (3 coups pour un petit, 8 pour un grand) pour récolter du bois, puis construis murs, planchers et rampes à buggy. Une route de terre part de la plage.</p>
+      <p class="note">Clavier : ZQSD ou flèches, Maj pour courir, espace pour sauter (frein dans le buggy), F pour l’action, T pour changer d’outil, B pour construire, C pour la caméra. Dans l’eau, E et A pour remonter et plonger.</p>
     </div>
   </aside>
 

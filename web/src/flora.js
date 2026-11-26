@@ -319,6 +319,7 @@ export class Flora {
     }
     this.count = { trees, bushes };
     const n = I.x.length;
+    this.dead = new Uint8Array(I.x.length);
     this.I = { x: new Float32Array(I.x), y: new Float32Array(I.y), z: new Float32Array(I.z), r: new Float32Array(I.r), s: new Float32Array(I.s), t: new Uint16Array(I.t), c: new Float32Array(I.c), l: new Float32Array(I.l), n };
     const GC = 32, GN = W / GC;
     this.GC = GC; this.GN = GN;
@@ -336,9 +337,22 @@ export class Flora {
     }
   }
 
+  refresh() { this.lastCam.set(1e9, 0, 0); this._t = 1; }
+  // arbre debout le plus proche d'un point (sert à retrouver les arbres abattus d'une sauvegarde)
+  treeAt(x, z, maxD = 0.8) {
+    const W = this.T.W, GC = this.GC, GN = this.GN, I = this.I;
+    const cx = clamp(Math.floor((x + W / 2) / GC), 0, GN - 1), cz = clamp(Math.floor((z + W / 2) / GC), 0, GN - 1);
+    let best = -1, bd = maxD;
+    for (const i of this.cells[cz * GN + cx]) {
+      if (this.types[I.t[i]].cat !== 'tree' || this.dead[i]) continue;
+      const d = Math.hypot(I.x[i] - x, I.z[i] - z);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
   canopyList() {
     const out = [], I = this.I;
-    for (let i = 0; i < I.n; i++) { const t = this.types[I.t[i]]; if (t.cat === 'tree') out.push({ x: I.x[i], z: I.z[i], r: t.crownR * I.s[i] * 0.95 }); }
+    for (let i = 0; i < I.n; i++) { const t = this.types[I.t[i]]; if (t.cat === 'tree' && !this.dead[i]) out.push({ x: I.x[i], z: I.z[i], r: t.crownR * I.s[i] * 0.95 }); }
     return out;
   }
   // Couronnes de palmiers proches d'un point (perchoirs pour les oiseaux)
@@ -358,9 +372,9 @@ export class Flora {
     const c0z = clamp(Math.floor((z - r + W / 2) / GC), 0, GN - 1), c1z = clamp(Math.floor((z + r + W / 2) / GC), 0, GN - 1);
     for (let cz = c0z; cz <= c1z; cz++) for (let cx = c0x; cx <= c1x; cx++) for (const i of this.cells[cz * GN + cx]) {
       const t = this.types[I.t[i]];
-      if (t.cat !== 'tree' || !t.trunkR) continue;
+      if (t.cat !== 'tree' || !t.trunkR || this.dead[i]) continue;
       const dx = I.x[i] - x, dz = I.z[i] - z;
-      if (dx * dx + dz * dz < r * r) out.push({ x: I.x[i], z: I.z[i], r: t.trunkR * I.s[i] + 0.1 });
+      if (dx * dx + dz * dz < r * r) out.push({ x: I.x[i], z: I.z[i], r: t.trunkR * I.s[i] + 0.1, i });
     }
     return out;
   }
@@ -533,6 +547,7 @@ export class Flora {
       if (cd2 > 7e6) continue;
       const isTreeOnly = cd2 > RIB2 * 1.1;
       for (const i of this.cells[c]) {
+        if (this.dead[i]) continue;
         const t = I.t[i], ty = this.types[t];
         if (isTreeOnly && ty.cat !== 'tree') continue;
         const ex = I.x[i] - cam.x, ez = I.z[i] - cam.z, ey = I.y[i] - cam.y, d2 = ex * ex + ez * ez + ey * ey;

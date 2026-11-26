@@ -15,6 +15,7 @@ export class Controls {
       if (e.code === 'KeyR') this.reset = true;
       if (e.code === 'KeyF' || e.code === 'Enter') this.act = true;
       if (e.code === 'KeyT') this.tool = true;
+      if (e.code === 'KeyB') this.build = true;
       if (e.code === 'Space') this.jumpK = true;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -48,7 +49,7 @@ export class Controls {
     };
     hold('bBrake', 'brake'); hold('bUp', 'up'); hold('bDown', 'down'); hold('bJump', 'jumpB');
     const tap = (id, key) => document.getElementById(id).addEventListener('pointerdown', (e) => { e.preventDefault(); this[key] = true; });
-    tap('bAct', 'act'); tap('bTool', 'tool'); tap('bJump', 'jumpK');
+    tap('bAct', 'act'); tap('bTool', 'tool'); tap('bBuild', 'build'); tap('bJump', 'jumpK');
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('touchmove', (e) => { if (e.target === canvas || e.target.closest('#hud')) e.preventDefault(); }, { passive: false });
   }
@@ -64,9 +65,9 @@ export class Controls {
       lookX: this.look.dx, lookY: this.look.dy,
       up: this.up || k.has('KeyE') || k.has('PageUp'), down: this.down || k.has('KeyQ') || k.has('PageDown'),
       camera: this.cam, reset: this.reset, fast: k.has('ShiftLeft') || k.has('ShiftRight'),
-      jump: this.jumpK || this.jumpB || k.has('Space'), act: this.act, tool: this.tool, analog: this.stick.id !== null,
+      jump: this.jumpK || this.jumpB || k.has('Space'), act: this.act, tool: this.tool, build: this.build, analog: this.stick.id !== null,
     };
-    this.look.dx = this.look.dy = 0; this.cam = this.reset = this.act = this.tool = this.jumpK = false;
+    this.look.dx = this.look.dy = 0; this.cam = this.reset = this.act = this.tool = this.jumpK = this.build = false;
     return out;
   }
 }

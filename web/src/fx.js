@@ -163,6 +163,15 @@ export class Effects {
       this.sandP.emit(p.x + (r() - 0.5) * 0.3, p.y + 0.1, p.z + (r() - 0.5) * 0.3, -vel.x * 0.25 + (r() - 0.5) * 1.8, 1.2 + r() * 2.2, -vel.z * 0.25 + (r() - 0.5) * 1.8, 0.7 + r() * 0.9, 0.18, 0.9 + r() * 0.8, 0.55, col[0], col[1], col[2]);
     }
   }
+  // gerbe de particules : copeaux de bois, feuilles, poussière (chute d'un arbre)
+  burst(p, n, col, spread = 2, up = 2, size = 0.12, life = 1.2) {
+    const r = this.rnd;
+    for (let k = 0; k < n; k++) {
+      const v = 0.85 + r() * 0.3;
+      this.sandP.emit(p.x + (r() - 0.5) * spread * 0.4, p.y + r() * 0.3, p.z + (r() - 0.5) * spread * 0.4,
+        (r() - 0.5) * spread, up * (0.4 + r()), (r() - 0.5) * spread, life * (0.6 + r() * 0.8), size, size * (1.5 + r()), 0.85, col[0] * v, col[1] * v, col[2] * v);
+    }
+  }
   splash(p, vel, dt) {
     const r = this.rnd;
     const n = Math.min(4, vel.length() * dt * 8);

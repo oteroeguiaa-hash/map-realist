@@ -68,6 +68,11 @@ export class UI {
     set('bAct', 'hidden', !s.action);
     if (s.action) set('bAct', 'textContent', s.action);
     set('bTool', 'hidden', !s.tools);
+    set('bTool', 'textContent', s.toolLabel || 'Outil');
+    set('bBuild', 'hidden', !s.build);
+    set('bBuild', 'textContent', s.building ? 'Terminer' : 'Construire');
+    set('wood', 'hidden', !(s.wood > 0 || s.building));
+    set('woodN', 'textContent', String(s.wood || 0));
     set('fps', 'textContent', `${Math.round(s.fps)} i/s`);
   }
   credits(manifest) {

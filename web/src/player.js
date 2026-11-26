@@ -22,6 +22,7 @@ export class Player {
     camera.add(this.vm);
     this.swing = -1;
     this.onHit = null;
+    this.groundAt = (x, z) => this.T.height(x, z);
   }
 
   place(x, z, yaw) {
@@ -130,7 +131,7 @@ export class Player {
     const wish = new V3().addScaledVector(fwd, inp.throttle).addScaledVector(right, inp.steer);
     const mag = Math.min(1, wish.length());
     if (mag > 1e-3) wish.multiplyScalar(1 / wish.length());
-    const g = T.height(this.pos.x, this.pos.z), wl = this.waterLevel(this.pos.x, this.pos.z);
+    const g = this.groundAt(this.pos.x, this.pos.z), wl = this.waterLevel(this.pos.x, this.pos.z);
     const depth = wl - g;
     // nage : l'eau est plus profonde que la poitrine
     this.swimming = depth > 1.35 && this.pos.y < wl - 1.1;
@@ -154,12 +155,12 @@ export class Player {
     }
     // pentes trop raides : on ne monte pas
     const nx = this.pos.x + this.vel.x * dt, nz = this.pos.z + this.vel.z * dt;
-    const gn = T.height(nx, nz), step = Math.hypot(nx - this.pos.x, nz - this.pos.z);
+    const gn = this.groundAt(nx, nz), step = Math.hypot(nx - this.pos.x, nz - this.pos.z);
     if (this.onGround && step > 1e-4 && (gn - g) / step > 1.15 && gn > wl) { this.vel.x *= 0.1; this.vel.z *= 0.1; }
     else { this.pos.x = nx; this.pos.z = nz; }
     this.pos.y += this.vel.y * dt;
     this.collide(extra);
-    const gg = T.height(this.pos.x, this.pos.z);
+    const gg = this.groundAt(this.pos.x, this.pos.z);
     if (this.pos.y <= gg + 0.02 || (this.onGround && !this.swimming && this.vel.y <= 0 && this.pos.y - gg < 0.45)) {
       this.pos.y = gg; if (this.vel.y < 0) this.vel.y = 0; this.onGround = true;
     } else this.onGround = false;
@@ -233,7 +234,7 @@ export class Player {
     if (best) {
       this.shake = 1;
       const p = new V3(best.x - dir.x * best.r, this.pos.y + 1.1, best.z - dir.z * best.r);
-      this.onHit && this.onHit(p, 'tree');
+      this.onHit && this.onHit(p, 'tree', best);
     } else this.onHit && this.onHit(this.pos.clone().addScaledVector(dir, 1.2), 'air');
   }
 }

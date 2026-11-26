@@ -70,6 +70,23 @@ const shots = {
     { name: 'c_pier', setup: `G.teleport('ponton');` },
   ],
   spawn: [{ name: 'spawn', setup: '' }],
+  chop: [
+    { name: 'chop_before', setup: `
+      try { localStorage.clear(); } catch (e) {}
+      const P=G.player, F=G.veg, I=F.I; const s=G.world.spawn;
+      let best=-1, bd=1e9; for (let i=0;i<I.n;i++){ const t=F.types[I.t[i]]; if(t.name!=='grand arbre') continue; const d=Math.hypot(I.x[i]-s.x,I.z[i]-s.z); if(d<bd){bd=d;best=i;} }
+      G.__tree=best; const x=I.x[best]-6, z=I.z[best]-14; P.place(x, z, 0); P.yaw=Math.atan2(-(I.x[best]-x), -(I.z[best]-z)); P.pitch=0.25;
+      console.warn('arbre', best, bd.toFixed(0), F.types[I.t[best]].h*I.s[best]);` },
+    { name: 'chop_fall1', setup: `const L=G.lumber; for(let k=0;k<8;k++) L.hit(G.__tree, G.player.pos); console.warn('falling', L.falling.length);` },
+    { name: 'chop_fall2', setup: `` },
+    { name: 'chop_after', setup: `for(let k=0;k<30;k++) G.lumber.update(0.05); console.warn('bois', G.lumber.wood, 'repos', G.lumber.fallen[0] && G.lumber.fallen[0].theta.toFixed(2), JSON.stringify(G.lumber.save()));` },
+    { name: 'chop_side', setup: `G.rig.setMode('drone'); const r=G.lumber.fallen[0]; const c=G.camera.position; const m=r.pivot.position.clone().addScaledVector(r.dir, r.L*0.5); c.set(m.x - r.dir.z*16, m.y+5, m.z + r.dir.x*16); G.rig.yaw=Math.atan2(-(m.x-c.x), -(m.z-c.z)); G.rig.pitch=-0.25;` },
+  ],
+  build: [
+    { name: 'build_ramp', setup: `G.lumber.wood=60; const B=G.builder, P=G.player; B.kind='rampe'; B.active=true; B.preview(P, 60); B.confirm(); B.kind='plancher'; P.yaw+=0.9; B.preview(P,60); B.confirm(); B.kind='mur'; P.yaw-=1.8; B.preview(P,60); B.confirm(); B.active=false; G.rig.setMode('drone'); const c=G.camera.position; c.set(P.pos.x-8, P.pos.y+6, P.pos.z+8); G.rig.yaw=-0.8; G.rig.pitch=-0.4;` },
+    { name: 'road_spur', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x+25, 14, s.z-30); G.rig.yaw=1.2; G.rig.pitch=-0.35;` },
+    { name: 'road_ground', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x+4, G.terrain.height(s.x+4, s.z-60)+1.7, s.z-60); G.rig.yaw=0.05; G.rig.pitch=-0.08;` },
+  ],
   probe: [{ name: 'probe', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x-60, G.terrain.height(s.x-60, s.z-180)+2.2, s.z-180); G.rig.yaw = 0.3; G.rig.pitch = 0.05;`, after: `
     const L=[]; G.scene.traverse(o=>{ if(o.isLight) L.push(o.type+':'+o.intensity.toFixed(2)); });
     const mats=new Set(); G.scene.traverse(o=>{ if(o.isMesh && /monstera/i.test(o.name)) mats.add(o.material.roughness+'/'+o.material.metalness+'/'+(o.material.map&&o.material.map.image&&o.material.map.image.width)); });

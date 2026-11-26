@@ -53,6 +53,10 @@ export class Buggy {
   constructor(scene, terrain, world, veg, props, bank) {
     this.T = terrain; this.world = world; this.veg = veg; this.props = props;
     this.WR = WR;
+    // sol : relief + constructions (planchers, rampes) ; remplacé par main.js
+    this.ground = (x, z) => this.T.height(x, z);
+    this.groundNormal = (x, z, out, e) => this.T.normal(x, z, out, e);
+    this.onBuilt = () => false;
     const glb = bank && bank.has('buggy') ? bank.instance('buggy') : null;
     const layout = glb ? this.glbLayout(glb) : null;
     this.pos = new V3(); this.vel = new V3(); this.quat = new THREE.Quaternion(); this.angVel = new V3();
@@ -208,6 +212,7 @@ export class Buggy {
 
   surfaceAt(x, z, h) {
     const T = this.T;
+    if (this.onBuilt(x, z)) return 4; // rondins : bonne adhérence, pas de traces
     const beach = 1.9 + vnoise(x * 0.045, z * 0.045) * 1.3 + vnoise(x * 0.0085 - 7, z * 0.0085 + 7) * 0.9;
     const path = T.mask(T.path, x, z);
     if (h < 0.35) return 1;          // sable mouillé
@@ -231,7 +236,7 @@ export class Buggy {
     this.drivetrain(dt, inp);
     for (let s = 0; s < steps; s++) this.step(h, inp);
     // sécurité : retour à un point sûr si on tombe à l'eau profonde ou sous le relief
-    const g = this.T.height(this.pos.x, this.pos.z);
+    const g = this.ground(this.pos.x, this.pos.z);
     if (this.pos.y < g - 1.5) this.reset();
     const deep = g < -1.25 && this.pos.y < 0.4;
     this.deepT = deep ? this.deepT + dt : 0;
@@ -299,7 +304,7 @@ export class Buggy {
     for (let i = 0; i < 4; i++) {
       const w = this.wheels[i];
       const a = new V3(w.x, 0.05, w.z).applyMatrix3(R).add(this.pos);
-      const g = T.height(a.x, a.z);
+      const g = this.ground(a.x, a.z);
       const dist = (a.y - g - this.WR) / cosT;
       w.contact = dist < LMAX;
       w.Lprev = w.L; w.L = w.contact ? clamp(dist, 0.03, LMAX) : Math.min(LMAX, w.L + h * 2.5);
@@ -325,7 +330,7 @@ export class Buggy {
       w.load = Fs;
       const a = w.a, g = w.g;
       const cp = new V3(a.x, g, a.z);
-      const n = T.normal(a.x, a.z, new V3(), 0.8);
+      const n = this.groundNormal(a.x, a.z, new V3(), 0.8);
       const surf = this.surfaceAt(a.x, a.z, g);
       w.surface = surf;
       // direction de la roue (Ackermann : la roue intérieure braque un peu plus)
@@ -368,9 +373,9 @@ export class Buggy {
     // collisions de la caisse avec le sol (avant, arrière)
     for (const [cx, cz] of [[0, 1.95], [0, -1.9], [-0.5, 0.4], [0.5, 0.4]]) {
       const p = new V3(cx, -COM_H + 0.38, cz).applyMatrix3(R).add(this.pos);
-      const g = T.height(p.x, p.z);
+      const g = this.ground(p.x, p.z);
       if (p.y < g) {
-        const n = T.normal(p.x, p.z, new V3(), 0.8);
+        const n = this.groundNormal(p.x, p.z, new V3(), 0.8);
         const r = new V3().subVectors(p, this.pos);
         const vp = this.vel.clone().add(new V3().crossVectors(this.angVel, r));
         const Fn = n.clone().multiplyScalar((g - p.y) * 90000 - Math.min(0, vp.dot(n)) * 6000);
