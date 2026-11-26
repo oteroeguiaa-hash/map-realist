@@ -48,3 +48,6 @@ web/assets/glb/
 
 # Carte d'éclairage réduite (régénérée par web/tools/prep_hdri.mjs depuis ile-3d)
 web/assets/hdri/*.exr
+
+# Copies de travail des agents (git worktree)
+.claude/worktrees/
