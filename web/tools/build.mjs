@@ -15,10 +15,19 @@ const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const html = fs.readFileSync(path.join(ROOT, 'index.template.html'), 'utf8').replace('/*BUNDLE*/', () => js);
 fs.writeFileSync(path.join(DIST, 'index.html'), html);
 const files = [];
+// Les données binaires (.bin) sont publiées en JSON (base64), un format de données standard.
 const copy = (rel) => {
-  const src = path.join(ROOT, 'assets', rel), dst = path.join(DIST, 'assets', rel);
-  fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.copyFileSync(src, dst);
+  const src = path.join(ROOT, 'assets', rel);
+  if (rel.endsWith('.bin')) {
+    rel = rel.replace(/\.bin$/, '.data.json');
+    const dst = path.join(DIST, 'assets', rel);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, JSON.stringify({ format: 'base64', bytes: fs.statSync(src).size, data: fs.readFileSync(src).toString('base64') }));
+  } else {
+    const dst = path.join(DIST, 'assets', rel);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+  }
   files.push('assets/' + rel);
 };
 for (const f of ['world.json', 'terrain.bin', 'clouds.bin']) copy(f);

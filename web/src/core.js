@@ -183,10 +183,14 @@ export function loadTex(url, { srgb = true, repeat = false, aniso = 4, flipY = t
     }, undefined, () => rej(new Error('Texture introuvable : ' + url)));
   });
 }
+// Données binaires publiées en JSON base64 (nom.data.json)
 export async function fetchBuf(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error('Fichier introuvable : ' + url);
-  return r.arrayBuffer();
+  const j = await r.json();
+  const s = atob(j.data), n = s.length, out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) out[i] = s.charCodeAt(i);
+  return out.buffer;
 }
 export async function fetchJSON(url) {
   const r = await fetch(url);

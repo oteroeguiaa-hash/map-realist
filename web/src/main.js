@@ -48,7 +48,7 @@ async function boot() {
 
     ui.progress(0.08, 'Chargement du relief de l’île…');
     const [world, tbuf, cbuf, atlasRects] = await Promise.all([
-      fetchJSON(`${ASSETS}/world.json`), fetchBuf(`${ASSETS}/terrain.bin`), fetchBuf(`${ASSETS}/clouds.bin`), fetchJSON(`${ASSETS}/tex/atlas.json`),
+      fetchJSON(`${ASSETS}/world.json`), fetchBuf(`${ASSETS}/terrain.data.json`), fetchBuf(`${ASSETS}/clouds.data.json`), fetchJSON(`${ASSETS}/tex/atlas.json`),
     ]);
     G.world = world;
     const data = new TerrainData(world, tbuf);

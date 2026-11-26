@@ -6,7 +6,7 @@ const V3 = THREE.Vector3;
 
 async function loadModel(base, name, aniso) {
   const [buf, a, n] = await Promise.all([
-    fetchBuf(`${base}/mdl/${name}.bin`), loadTex(`${base}/mdl/${name}_a.jpg`, { aniso }), loadTex(`${base}/mdl/${name}_n.jpg`, { srgb: false, aniso }),
+    fetchBuf(`${base}/mdl/${name}.data.json`), loadTex(`${base}/mdl/${name}_a.jpg`, { aniso }), loadTex(`${base}/mdl/${name}_n.jpg`, { srgb: false, aniso }),
   ]);
   const h = new Uint32Array(buf, 0, 2), nv = h[0], ni = h[1];
   let o = 8;
