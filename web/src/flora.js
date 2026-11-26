@@ -6,8 +6,8 @@ import { makeBroadleaf, makeTreeFern, makePalm, makeBush, makeDead, tube, cluste
 
 const V3 = THREE.Vector3;
 const QUAL = [
-  { tree: 45, bush: 16, shadow: 26, impBush: 110, density: 0.7 },
-  { tree: 58, bush: 17, shadow: 28, impBush: 150, density: 0.85 },
+  { tree: 45, bush: 16, shadow: 30, impBush: 110, density: 0.7 },
+  { tree: 58, bush: 17, shadow: 30, impBush: 150, density: 0.85 },
   { tree: 90, bush: 32, shadow: 65, impBush: 200, density: 1.0 },
   { tree: 120, bush: 42, shadow: 85, impBush: 260, density: 1.0 },
 ];
@@ -428,6 +428,7 @@ export class Flora {
         m.castShadow = t.cat === 'tree';
         m.receiveShadow = true;
         m.shadowCount = 0;
+        m.matrixAutoUpdate = false; m.updateMatrix();
         m.onBeforeShadow = function () { this._c = this.count; this.count = this.shadowCount; };
         m.onAfterShadow = function () { this.count = this._c; };
         this.scene.add(m);

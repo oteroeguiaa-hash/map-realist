@@ -15,6 +15,7 @@ import { Lumber } from './lumber.js';
 import { GrassField } from './grassfield.js';
 import { chooseSites, carvePonds } from './sites.js';
 import { Ponds } from './ponds.js';
+import { makeIslands } from './islands.js';
 import { Camp, makeBeam } from './camp.js';
 import { Builder, PIECES } from './build.js';
 
@@ -34,10 +35,12 @@ import { Sound } from './audio.js';
 const ASSETS = 'assets';
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
 const QUALITY = [
-  { name: 'Bas', scale: 0.8, msaa: 0, shadow: 1024, shadowR: 60, sky: 0, terrain: 0, veg: 0 },
-  { name: 'Moyen', scale: 0.88, msaa: 2, shadow: 1536, shadowR: 80, sky: 1, terrain: 1, veg: 1 },
-  { name: 'Élevé', scale: 0.92, msaa: 4, shadow: 2048, shadowR: 105, sky: 2, terrain: 2, veg: 2 },
-  { name: 'Ultra', scale: 1.0, msaa: 4, shadow: 2048, shadowR: 130, sky: 3, terrain: 3, veg: 3 },
+  // shadowR : demi-côté du carré d'ombres dynamiques autour du joueur (Bas/Moyen : 45 × 45 m en 1024²).
+  // Au-delà, les ombres du relief et des arbres viennent de la carte de lumière précalculée.
+  { name: 'Bas', scale: 0.85, msaa: 0, shadow: 1024, shadowR: 22.5, sky: 0, terrain: 0, veg: 0 },
+  { name: 'Moyen', scale: 0.92, msaa: 2, shadow: 1024, shadowR: 22.5, sky: 1, terrain: 1, veg: 1 },
+  { name: 'Élevé', scale: 0.95, msaa: 4, shadow: 2048, shadowR: 40, sky: 2, terrain: 2, veg: 2 },
+  { name: 'Ultra', scale: 1.0, msaa: 4, shadow: 2048, shadowR: 60, sky: 3, terrain: 3, veg: 3 },
 ];
 
 // ordre de chargement des modèles .glb : végétation d'abord, puis rochers, véhicules, outils, animaux
@@ -59,7 +62,7 @@ async function boot() {
     const canvas = document.getElementById('c');
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', alpha: false, stencil: false });
     if (!renderer.capabilities.isWebGL2) throw new Error('WebGL 2 est nécessaire.');
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); // plafonné : énorme gain sur les écrans d'iPhone (×3)
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = true;
@@ -174,12 +177,15 @@ async function boot() {
     await props.init(ASSETS);
     G.props = props;
     const ponds = new Ponds(scene, data, world.ponds || []);
+    G.islands = makeIslands(scene);
     G.ponds = ponds;
     const camp = new Camp(scene, data, world, bank, props, Q().veg >= 2 && renderer.capabilities.maxTextures >= 24 ? 2 : 0);
     G.camp = camp;
     const roads = new Roads(scene, data, world);
     await roads.init(ASSETS, allRoads);
     G.roads = roads;
+    // décor fixe : on ne recalcule plus ses matrices à chaque image
+    for (const o of [...roads.chunks, ...ponds.list, ...Object.values(props.inst || {})]) { o.updateMatrix(); o.matrixAutoUpdate = false; }
     const sea = new Sea(scene, data, world);
     G.sea = sea;
 

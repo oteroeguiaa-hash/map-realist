@@ -69,6 +69,8 @@ export class TerrainData {
       k *= S(8, 20, Math.hypot(x - sp.x, z - sp.z));                  // point de départ plat
       k *= S(6, 16, Math.hypot(x - pool[0], z - pool[2]) - world.waterfall.poolR);
       if (world.camp) k *= S(4, 12, Math.hypot(x - world.camp.x, z - world.camp.z) - world.camp.r);
+      const lip = world.waterfall.lip;
+      const kLip = S(30, 70, Math.hypot(x - lip[0], z - lip[2]));
       if (world.ponds) for (const p of world.ponds) { const dp = Math.hypot(x - p.x, z - p.z) - p.r; if (dp < 14) k *= S(2, 14, dp); }
       if (k <= 0.001) continue;
       let d;
@@ -78,6 +80,12 @@ export class TerrainData {
         d = ((vnoise(ux / 16, uz / 6) - 0.5) * 1.2 + (vnoise(x / 5 + 11, z / 5 - 3) - 0.5) * 0.45) * S(0.1, 1.1, h0);
       } else {
         d = (vnoise(x / 9 - 5, z / 9 + 8) - 0.5) * 0.9 + (vnoise(x / 4.2 + 17, z / 4.2 - 9) - 0.5) * 0.45;
+      }
+      // montagnes : bruit en crêtes (ridged multifractal) qui découpe arêtes et ravins sur les hauteurs
+      if (h0 > 30) {
+        let rs = 0, a = 0.5, f = 1, wgt = 1;
+        for (let o = 0; o < 4; o++) { let n = 1 - Math.abs(vnoise(x / 95 * f + 13, z / 95 * f - 7) * 2 - 1); n *= n * wgt; wgt = Math.min(Math.max(n * 2, 0), 1); rs += n * a; a *= 0.5; f *= 2.05; }
+        d += (rs - 0.35) * 9 * S(30, 90, h0) * (1 - S(225, 270, h0)) * kLip;
       }
       // trous irréguliers, ici et là (pas partout) : petites cuvettes de 0,3 à 0,9 m
       const pit = vnoise(x / 6.5 + 31, z / 6.5 - 17);
@@ -384,6 +392,9 @@ function makeTerrainMaterial(data, tex) {
         float b = hblend(wPath, hL, pn.b);
         alb = mix(alb, pa * vec3(1.0, 0.95, 0.9), b); nT = normalize(mix(nT, decN(pn), b)); rough = mix(rough, 0.9, b);
       }
+      // mousse : sur les pentes douces, à l'ombre de la jungle et près de l'eau
+      float wMoss = smoothstep(0.08, 0.2, slope) * (1.0 - smoothstep(0.32, 0.45, slope)) * clamp(gCanopy * 1.2 + mk.g, 0.0, 1.0) * smoothstep(0.45, 0.7, n2) * (1.0 - wSand);
+      alb = mix(alb, vec3(dot(alb, vec3(0.33))) * vec3(0.55, 0.85, 0.35) * 1.1, wMoss * 0.7); rough = mix(rough, 0.97, wMoss);
       // variation à grande échelle
       alb *= 0.82 + 0.36 * n3 + 0.12 * (n1 - 0.5);
       // sous la canopée : sol sombre et verdâtre ; au loin, la jungle se lit comme une masse verte

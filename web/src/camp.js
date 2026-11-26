@@ -57,6 +57,7 @@ export class Camp {
     this.on = 0;
     if (!this.c) return;
     this.build();
+    this.freeze();
   }
   model(name) {
     const o = this.bank.has(name) ? this.bank.instance(name, { measure: 'none' }) : null;
@@ -72,18 +73,25 @@ export class Camp {
     const proto = this.model('barrier');
     const toSpawn = Math.atan2(this.world.spawn.x - c.x, this.world.spawn.z - c.z);
     if (proto) {
-      const n = 18;
+      // un seul InstancedMesh par morceau du modèle (100 % de ses triangles), pas 18 copies
+      const n = 18, mats = [];
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2;
-        let da = Math.abs(((a - toSpawn) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
+        const da = Math.abs(((a - toSpawn) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
         if (da < 0.2) continue; // entrée
         const x = c.x + Math.sin(a) * c.r, z = c.z + Math.cos(a) * c.r;
-        const o = k === 0 ? proto : proto.clone();
-        o.position.set(x, T.height(x, z) - 0.02, z);
-        o.rotation.y = a + Math.PI / 2;
-        this.group.add(o);
+        mats.push(new THREE.Matrix4().compose(new V3(x, T.height(x, z) - 0.02, z), new THREE.Quaternion().setFromAxisAngle(new V3(0, 1, 0), a + Math.PI / 2), new V3(1, 1, 1)));
         this.props.colliders.push({ x, z, r: 0.75, top: T.height(x, z) + 1.1 });
       }
+      proto.updateMatrixWorld(true);
+      proto.traverse((o) => {
+        if (!o.isMesh) return;
+        const im = new THREE.InstancedMesh(o.geometry, o.material, mats.length);
+        mats.forEach((m, i) => im.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(m, o.matrixWorld)));
+        im.castShadow = true; im.receiveShadow = true;
+        im.computeBoundingSphere();
+        this.group.add(im);
+      });
     }
     // --- poteaux + appliques murales (2, de part et d'autre de l'entrée) ---
     const sconce = this.model('sconce');
@@ -149,6 +157,8 @@ export class Camp {
       this.candle = L;
     }
   }
+  // décor fixe : matrices calculées une fois pour toutes
+  freeze() { this.group.traverse((o) => { if (o !== this.flame) { o.updateMatrix(); o.matrixAutoUpdate = false; } }); this.group.updateMatrixWorld(true); }
   addLight(L, lumens, map) {
     L.castShadow = this.shadows;
     L.shadow.mapSize.set(map, map);

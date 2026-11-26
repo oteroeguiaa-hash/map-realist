@@ -259,7 +259,9 @@ export class Water {
         const hw = hw0 + (hw1 - hw0) * (k / (n - 1)) + 2.6;
         const slope = Math.max(0, (pts[Math.max(k - 2, 0)][1] - pts[Math.min(k + 2, n - 1)][1]) / 16);
         const sp = speedBase + Math.min(slope * 6, 2.2);
-        for (const s of [-1, 1]) { rb.p.push(pts[k][0] - tz * hw * s, pts[k][1], pts[k][2] + tx * hw * s); rb.f.push(tx * sp, 0, tz * sp); }
+        // l'eau épouse le lit : jamais sous le fond, jamais plus de 1,2 m au-dessus (pas d'eau qui flotte)
+        const bed = terrain.height(pts[k][0], pts[k][2]), wy = Math.min(Math.max(pts[k][1], bed + 0.15), bed + 1.2);
+        for (const s of [-1, 1]) { rb.p.push(pts[k][0] - tz * hw * s, wy, pts[k][2] + tx * hw * s); rb.f.push(tx * sp, 0, tz * sp); }
       }
       for (let k = 0; k < n - 1; k++) { const a = base + k * 2; rb.i.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     };

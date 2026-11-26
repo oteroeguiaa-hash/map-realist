@@ -97,3 +97,11 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Démarrage : tous les shaders sont compilés pendant l'écran de chargement, et on attend les animaux avant de lancer (moins de saccades au début).
 - Mer : vagues plus hautes, rouleaux qui arrivent vers la plage et se creusent quand le fond remonte ; écume fine sur la crête des rouleaux et moutons au large par vent fort.
 - Test de qualité forcée : `?q=0..3` dans l'adresse.
+
+## 26/11/2026 — Démo web : îles à l'horizon, montagnes découpées, optimisations mobiles
+
+- Performances : résolution plafonnée à 1,5× la densité de pixels (au lieu de 2×), ombres dynamiques du soleil dans un carré de 45 × 45 m autour du joueur en 1024² (Bas/Moyen) ; au-delà, ombres de la carte de lumière précalculée. Barrières du campement en InstancedMesh. Matrices figées (matrixAutoUpdate = false) pour le décor fixe. Départ en Moyen : 2,0 M → 1,18 M triangles, 260 → 154 appels de dessin.
+- Îles lointaines : 11 îles (pics, volcans éteints, archipels, massifs) à 2–7 km, maillages légers figés, voilées par la brume atmosphérique.
+- Relief : bruit en crêtes (ridged multifractal) sur les hauteurs (arêtes et ravins, ±5 m), mousse sur les pentes douces ombragées.
+- Rivières : la surface de l'eau est recalée sur le lit (jamais sous le fond, jamais à plus de 1,2 m au-dessus).
+- Non fait, volontairement : maillage 256 × 256 (le terrain actuel est déjà en 1024 × 1024 avec niveaux de détail) ; triangles d'origine pour l'herbe, les fougères et les rochers (×3 à ×200 triangles, incompatible avec la fluidité sur iPhone).
