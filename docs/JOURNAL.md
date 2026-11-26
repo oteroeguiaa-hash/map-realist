@@ -53,3 +53,10 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Bois récolté (3 ou 8 bûches) ; construction en rondins : mur (6), plancher (8), rampe à buggy (10). Les pièces s'alignent sur une grille, portent le joueur et le buggy.
 - Sauvegarde dans le téléphone (localStorage) : arbres abattus, bois, constructions retrouvés au retour.
 - Testé (Chromium logiciel) : chute d'un arbre de 22 m (repos à 88°), pose des trois pièces, route visible, conduite stable.
+
+## 26/11/2026 — Démo web : palmiers variés, branches au vent, jungle dense au bord des routes
+
+- Palmiers orientés au hasard (seuls ceux du bord de mer penchent plutôt vers l'eau) ; troncs de palmiers 1,5× plus épais, grands arbres plus larges.
+- Vent : chaque palme et branche oscille avec son propre rythme, d'autant plus qu'elle est loin du tronc.
+- Bordure de végétation dense et nette le long des routes (bananiers, monstera, fougères), sous-bois plus fourni partout, herbe plus verte.
+- Mesure (Chromium logiciel, Moyen, jungle vue d'en haut) : 1,69 M triangles ombres comprises.

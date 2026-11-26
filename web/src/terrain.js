@@ -289,7 +289,7 @@ function makeTerrainMaterial(data, tex) {
       if (wGrass > 0.01) {
         vec3 ga = texture(tGrassA, vWP.xz / 2.6).rgb;
         float b = hblend(wGrass, hL, 0.55 + n2 * 0.2);
-        alb = mix(alb, ga * vec3(0.5, 0.68, 0.36), b); hL = mix(hL, 0.6, b);
+        alb = mix(alb, ga * vec3(0.4, 0.62, 0.28), b); hL = mix(hL, 0.6, b);
       }
       // terre nue (Farm Soil) par plaques sous la jungle, là où les feuilles mortes manquent
       float wSoil = smoothstep(0.58, 0.78, n2 * 0.6 + n1 * 0.4) * smoothstep(6.0, 14.0, hgt) * (1.0 - wGrass);

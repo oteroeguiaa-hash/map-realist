@@ -7,7 +7,7 @@ import { makeBroadleaf, makeTreeFern, makePalm, makeBush, makeDead, tube, cluste
 const V3 = THREE.Vector3;
 const QUAL = [
   { tree: 45, bush: 16, shadow: 26, impBush: 110, density: 0.7 },
-  { tree: 58, bush: 21, shadow: 36, impBush: 150, density: 0.85 },
+  { tree: 58, bush: 19, shadow: 34, impBush: 150, density: 0.85 },
   { tree: 90, bush: 32, shadow: 65, impBush: 200, density: 1.0 },
   { tree: 120, bush: 42, shadow: 85, impBush: 260, density: 1.0 },
 ];
@@ -36,6 +36,20 @@ function natureMat(src, cat, opts = {}) {
 }
 
 // Extrait les maillages d'un objet GLTF dans son repère, remis à l'échelle (hauteur cible), base au sol
+const isLeafMat = (src) => src.alphaTest > 0 || src.transparent || /leaf|leaves|fern|frond|monstera|palm_b08a|banana_b09a/i.test(src.name);
+// épaissit un tronc autour de sa ligne centrale (tranche par tranche), sans toucher aux feuilles
+function thickenTrunk(g, k, H) {
+  const pos = g.attributes.position, n = pos.count, B = 24, cx = new Float32Array(B), cz = new Float32Array(B), cn = new Float32Array(B);
+  const bin = (y) => Math.max(0, Math.min(B - 1, Math.floor(y / H * B)));
+  for (let i = 0; i < n; i++) { const b = bin(pos.getY(i)); cx[b] += pos.getX(i); cz[b] += pos.getZ(i); cn[b]++; }
+  for (let b = 0; b < B; b++) if (cn[b]) { cx[b] /= cn[b]; cz[b] /= cn[b]; }
+  for (let i = 0; i < n; i++) {
+    const b = bin(pos.getY(i)); if (!cn[b]) continue;
+    const f = k * (1 - 0.25 * pos.getY(i) / H);
+    pos.setX(i, cx[b] + (pos.getX(i) - cx[b]) * f); pos.setZ(i, cz[b] + (pos.getZ(i) - cz[b]) * f);
+  }
+  pos.needsUpdate = true;
+}
 function glbParts(obj, height, cat, opts = {}) {
   obj.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert();
@@ -57,6 +71,7 @@ function glbParts(obj, height, cat, opts = {}) {
     if (opts.maxTris && total > opts.maxTris) p.geo = thinCards(p.geo, opts.maxTris / total);
     p.geo.translate(-cx, -box.min.y, -cz);
     p.geo.scale(s, s, s);
+    if (opts.thicken && !isLeafMat(p.src)) { p.geo.computeBoundingBox(); thickenTrunk(p.geo, opts.thicken, p.geo.boundingBox.max.y); p.geo.computeVertexNormals(); }
     const H = height;
     const pos = p.geo.attributes.position, n = pos.count, w = new Float32Array(n * 2);
     const ph = Math.random();
@@ -178,8 +193,8 @@ export class Flora {
     const palm = glb('palm');
     if (palm) {
       for (const hgt of [8.5, 10, 11.5]) {
-        const p = glbParts(palm, hgt, 'tree', { bend: true, leanH: { value: hgt } });
-        if (p) reg('palm', add({ cat: 'tree', name: 'palmier', parts: p.parts, h: p.h, trunkR: 0.22, crownR: p.r, lean: true }));
+        const p = glbParts(palm, hgt, 'tree', { bend: true, leanH: { value: hgt }, thicken: 1.5 });
+        if (p) reg('palm', add({ cat: 'tree', name: 'palmier', parts: p.parts, h: p.h, trunkR: 0.3, crownR: p.r, lean: true }));
       }
     }
     // --- pack de plantes : séparation plante par plante ---
@@ -200,7 +215,7 @@ export class Flora {
         const kind = /Palm/i.test(key) ? 'ppalm' : /Banana/i.test(key) ? 'gbanana' : /Fern/i.test(key) ? 'gfern' : 'gmonst';
         const hgt = kind === 'ppalm' ? 4.2 : kind === 'gbanana' ? 3.0 : kind === 'gfern' ? 1.1 : 1.3;
         const cat = kind === 'ppalm' ? 'tree' : 'bush';
-        const p = glbParts(g, hgt, cat, { maxTris: cat === 'bush' ? 1600 : 2600 });
+        const p = glbParts(g, hgt, cat, { maxTris: cat === 'bush' ? 1300 : 2600, thicken: kind === 'ppalm' ? 1.4 : 0 });
         if (p) reg(kind, add({ cat, name: key, parts: p.parts, h: p.h, trunkR: 0.12, crownR: p.r }));
       }
     }
@@ -229,7 +244,7 @@ export class Flora {
           const pa = part.geo.attributes.position;
           for (let i = 0; i < pa.count; i++) if (pa.getY(i) > rootH * 0.88) rTop = Math.max(rTop, Math.hypot(pa.getX(i), pa.getZ(i)));
         }
-        rTop = Math.min(rTop * 0.8, 0.75);
+        rTop = Math.min(rTop * 0.95, 0.9);
         const top = 14 + k * 2, CR = 7 + k, rnd = mulberry32(950 + k), b = new GeoBuilder();
         tube(b, [new V3(0, rootH * 0.7, 0), new V3((rnd() - 0.5) * 0.8, top * 0.45, (rnd() - 0.5) * 0.8), new V3((rnd() - 0.5) * 1.2, top * 0.8, (rnd() - 0.5) * 1.2), new V3((rnd() - 0.5) * 1.4, top, (rnd() - 0.5) * 1.4)],
           [rTop, rTop * 0.82, rTop * 0.66, rTop * 0.55], 9, A.treeBark, 2.4, { ao0: 0.55, ao1: 0.9, flex1: 0.03 });
@@ -280,6 +295,7 @@ export class Flora {
       else if (h < 175) { p = 0.5 * (0.75 + nz * 0.5); list = [['giant', 2.4], ['palm', 2.2], ['ppalm', 2.0]]; }
       else { p = 0.2 * (1 - smoothstep(220, 285, h)); list = [['ppalm', 1.2], ['palm', 0.6], ['giant', 0.4]]; }
       if (wet > 0.55) p *= 0.12;
+      if (h > 3 && Math.max(T.mask(T.path, x + 5, z), T.mask(T.path, x - 5, z), T.mask(T.path, x, z + 5), T.mask(T.path, x, z - 5)) > 0.3) p = Math.max(p, 0.7);
       if (slope > 0.5) p *= 0.2;
       p *= 0.75 + nz2 * 0.5;
       if (rnd() > p * this.q.density) continue;
@@ -288,33 +304,38 @@ export class Flora {
       const type = pick(arch);
       let rot = rnd() * Math.PI * 2, lean = 0;
       if (arch === 'palm') {
-        lean = (h < 12 ? 0.25 + rnd() * 0.6 : rnd() * 0.3);
-        if (h < 12) { const dx = -nrm.x, dz = -nrm.z, l = Math.hypot(dx, dz); if (l > 0.01) rot = Math.atan2(-dz / l, dx / l) + (rnd() - 0.5) * 0.9; }
+        // chaque palmier a sa propre direction ; seuls ceux du bord de mer penchent plutôt vers l'eau
+        lean = h < 5 ? 0.2 + rnd() * 0.55 : rnd() * 0.35;
+        if (h < 5 && rnd() < 0.6) { const dx = -nrm.x, dz = -nrm.z, l = Math.hypot(dx, dz); if (l > 0.01) rot = Math.atan2(-dz / l, dx / l) + (rnd() - 0.5) * 2.2; }
       }
       I.x.push(x); I.y.push(h - 0.08); I.z.push(z); I.r.push(rot); I.s.push(0.82 + rnd() * 0.36); I.t.push(type); I.c.push(0.84 + rnd() * 0.28); I.l.push(lean);
       trees++;
     }
-    const BC = 2.0;
+    const BC = 1.8;
+    // proximité d'une route : bordure de végétation dense, nette, comme un vrai chemin dans la jungle
+    const nearRoad = (x, z) => Math.max(T.mask(T.path, x + 3.2, z), T.mask(T.path, x - 3.2, z), T.mask(T.path, x, z + 3.2), T.mask(T.path, x, z - 3.2));
     for (let gz = -W / 2; gz < W / 2; gz += BC) for (let gx = -W / 2; gx < W / 2; gx += BC) {
       const x = gx + rnd() * BC, z = gz + rnd() * BC, h = T.height(x, z);
       if (h < 0.7 || h > 270) continue;
-      if (T.mask(T.path, x, z) > 0.3 || Math.hypot(x - spawn.x, z - spawn.z) < 9 || nearPier(x, z)) continue;
+      if (T.mask(T.path, x, z) > 0.2 || Math.hypot(x - spawn.x, z - spawn.z) < 9 || nearPier(x, z)) continue;
+      const edge = nearRoad(x, z) > 0.3;
       const clear = T.mask(T.clear, x, z), wet = T.mask(T.wet, x, z);
       T.normal(x, z, nrm, 2);
       const slope = 1 - nrm.y, nz = vnoise(x * 0.03 + 4, z * 0.03 - 8);
       const beach = 1.7 + vnoise(x * 0.045, z * 0.045) * 1.3;
       let p, list;
       if (h < beach) continue; // plage nette : pas de touffes plantées dans le sable
-      if (h < 10) { p = 0.22; list = [['gfern', 1.2], ['gmonst', 1], ['gbanana', 0.5]]; }
-      else if (h < 190) { p = 0.66 * (0.6 + nz * 0.7); list = [['gfern', 4.5], ['gmonst', 3.2], ['gbanana', wet > 0.05 ? 2.5 : 0.8]]; }
-      else { p = 0.15; list = [['gfern', 1]]; }
+      if (h < 10) { p = 0.5 * (0.7 + nz * 0.6); list = [['gfern', 1.5], ['gmonst', 1.2], ['gbanana', 0.7]]; }
+      else if (h < 190) { p = 0.8 * (0.65 + nz * 0.6); list = [['gfern', 4.5], ['gmonst', 3.2], ['gbanana', wet > 0.05 ? 2.5 : 1.0]]; }
+      else { p = 0.2; list = [['gfern', 1]]; }
       if (clear > 0.3) p *= 0.12;
+      if (edge && h > beach + 0.3) { p = 1.2; list = [['gbanana', 2], ['gmonst', 2.5], ['gfern', 3]]; }
       if (wet > 0.75) p *= 0.3;
       if (slope > 0.55) p *= 0.3;
       if (rnd() > p * this.q.density) continue;
       const arch = choose(list);
       if (!arch) continue;
-      I.x.push(x); I.y.push(h - 0.04); I.z.push(z); I.r.push(rnd() * Math.PI * 2); I.s.push(0.75 + rnd() * 0.55); I.t.push(pick(arch)); I.c.push(0.82 + rnd() * 0.32); I.l.push(0);
+      I.x.push(x); I.y.push(h - 0.04); I.z.push(z); I.r.push(rnd() * Math.PI * 2); I.s.push(edge ? 1.0 + rnd() * 0.6 : 0.75 + rnd() * 0.55); I.t.push(pick(arch)); I.c.push(0.82 + rnd() * 0.32); I.l.push(0);
       bushes++;
     }
     this.count = { trees, bushes };

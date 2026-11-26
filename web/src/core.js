@@ -112,6 +112,13 @@ export function patchMaterial(mat, opts = {}) {
           transformed += lw * sway * ${opts.windAmp || '0.35'};
           transformed.y -= abs(sway) * 0.04;
           transformed += objectNormal * sin(uTime * 5.3 + ph * 7.0) * flex * 0.035 * uWind;
+          // branches et palmes : chacune oscille avec son propre rythme, d'autant plus qu'elle est loin du tronc
+          float rad = length(position.xz);
+          float br = clamp(rad * 0.24, 0.0, 1.3) * flex;
+          float ang = atan(position.z, position.x);
+          float bph = uTime * 1.6 + ph + ang * 3.0;
+          transformed.y += (sin(bph) * 0.7 + sin(bph * 2.3 + 1.7) * 0.3) * br * 0.16 * uWind * (0.5 + gust);
+          transformed.xz += (position.xz / max(rad, 1e-3)) * sin(uTime * 1.1 + ang * 2.0 + ph) * br * 0.07 * uWind;
         }`);
     }
     vs = vs.replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
