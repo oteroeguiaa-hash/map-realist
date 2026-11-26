@@ -51,7 +51,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const G = (window.__game = {
   mode: 'foot',
-  ready: false, expo: 1, autoQ: true, qi: isMobile ? 1 : 2, frame: 0, fpsAvg: 30, scale: 1, paused: false,
+  ready: false, expo: 1, autoQ: true, qi: isMobile ? 0 : 2, goodT: 0, downT: -1e9, // téléphone : démarre en Bas, monte tout seul si c'est fluide frame: 0, fpsAvg: 30, scale: 1, paused: false,
 });
 { const qp = new URLSearchParams(location.search).get('q'); if (qp !== null && QUALITY[+qp]) { G.qi = +qp; G.autoQ = false; } }
 const ui = new UI();
@@ -176,6 +176,7 @@ async function boot() {
     const props = new Props(scene, data, world, null, bank);
     await props.init(ASSETS);
     G.props = props;
+    props.addCoconuts(veg);
     const ponds = new Ponds(scene, data, world.ponds || []);
     G.islands = makeIslands(scene);
     G.ponds = ponds;
@@ -203,7 +204,7 @@ async function boot() {
     torchBeam.position.copy(player.torchLight.position);
     camera.add(torchBeam);
     player.beam = torchBeam;
-    const fauna = new Fauna(scene, data, world, veg, bank);
+    const fauna = new Fauna(scene, data, world, veg, bank, Q().veg === 0 ? 0.6 : 1);
     G.fauna = fauna;
     // abattage et construction
     const lumber = new Lumber(scene, veg, data, props);
@@ -571,7 +572,10 @@ async function boot() {
           else if (avg < target * 0.8) s *= 1.04;
           s = clamp(s, 0.72, Q().scale);
           if (Math.abs(s - G.scale) > 0.02) { G.scale = s; resize(); }
-          if (G.scale <= 0.74 && avg > target * 1.25 && G.qi > 0) { G.qi--; applyQuality(); G.scale = Q().scale; resize(); }
+          if (G.scale <= 0.74 && avg > target * 1.25 && G.qi > 0) { G.qi--; applyQuality(); G.scale = Q().scale; resize(); G.downT = U.uTime.value; G.goodT = 0; }
+          // si c'est très fluide pendant 5 s, on monte d'un cran (jamais juste après une baisse)
+          G.goodT = avg < target * 0.72 && G.scale >= Q().scale - 0.01 ? G.goodT + 1 : 0;
+          if (G.goodT >= 5 && G.qi < (isMobile ? 2 : 3) && U.uTime.value - G.downT > 40) { G.qi++; applyQuality(); G.goodT = 0; }
         }
       }
       if (!G.ready && G.frame > 2) {

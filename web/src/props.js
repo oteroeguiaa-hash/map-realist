@@ -132,6 +132,28 @@ export class Props {
     }
   }
 
+  // noix de coco tombées au pied des palmiers (une seule géométrie instanciée, ~80 triangles)
+  addCoconuts(flora) {
+    const I = flora.I, rnd = mulberry32(31), T = this.T, list = [];
+    for (let i = 0; i < I.n && list.length < 2500; i++) {
+      if (flora.types[I.t[i]].name !== 'palmier' || rnd() > 0.55) continue;
+      const n = 1 + Math.floor(rnd() * 3);
+      for (let k = 0; k < n; k++) {
+        const a = rnd() * Math.PI * 2, d = 0.4 + rnd() * 1.6, x = I.x[i] + Math.cos(a) * d, z = I.z[i] + Math.sin(a) * d;
+        list.push([x, T.height(x, z) + 0.07, z, rnd() * 6.28, 0.85 + rnd() * 0.35]);
+      }
+    }
+    const g = new THREE.IcosahedronGeometry(0.11, 1); g.scale(1, 0.85, 1.1);
+    const mat = stdMat({ color: 0x4a3420, roughness: 0.85 }, 'coconut');
+    const im = new THREE.InstancedMesh(g, mat, Math.max(1, list.length));
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new V3(), p = new V3();
+    list.forEach(([x, y, z, r, s], k) => { q.setFromEuler(e.set(r * 0.7, r, 0)); im.setMatrixAt(k, m4.compose(p.set(x, y, z), q, sc.setScalar(s))); });
+    im.count = list.length; im.castShadow = false; im.receiveShadow = true;
+    im.computeBoundingSphere();
+    this.scene.add(im);
+    this.coconuts = im;
+  }
+
   buildPier() {
     const p = this.world.pier, T = this.T;
     const dx = p.x1 - p.x0, dz = p.z1 - p.z0, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, vx = -uz, vz = ux;

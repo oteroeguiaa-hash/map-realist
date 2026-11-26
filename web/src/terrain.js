@@ -355,7 +355,7 @@ function makeTerrainMaterial(data, tex) {
       if (wSand > 0.01) {
         vec2 uvS = vWP.xz / 3.4;
         vec3 sa = texture(tSandA, uvS).rgb;
-        sa = mix(sa, sa * 0.55 + vec3(0.33, 0.31, 0.26), 0.5) * vec3(1.04, 1.0, 0.93);
+        sa = mix(sa, sa * 0.55 + vec3(0.3, 0.27, 0.21), 0.5) * vec3(0.98, 0.91, 0.8); // sable beige chaud (pas blanc)
         vec4 sn = texture(tSandN, uvS);
         float b = hblend(wSand, hL, sn.b * 0.8 + 0.2);
         alb = mix(alb, sa, b); nT = normalize(mix(nT, decN(sn), b)); hL = mix(hL, sn.b, b); rough = mix(rough, 0.88, b);

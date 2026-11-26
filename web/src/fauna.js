@@ -35,7 +35,8 @@ const CALLS = { tiger: [120, 40], jaguar: [90, 45], boar: [40, 18], hiss: [18, 2
 
 
 export class Fauna {
-  constructor(scene, terrain, world, flora, bank) {
+  constructor(scene, terrain, world, flora, bank, density = 1) {
+    this.density = density; // qualité Basse : moins d'animaux en mémoire
     this.scene = scene; this.T = terrain; this.world = world; this.flora = flora; this.bank = bank;
     this.list = [];
     this.rnd = mulberry32(4242);
@@ -117,7 +118,8 @@ export class Fauna {
   spawnSpecies(name) {
     const sp = SPECIES[name], w = this.world, rnd = this.rnd;
     const sx = w.spawn.x, sz = w.spawn.z;
-    for (let k = 0; k < sp.n; k++) {
+    const n = Math.max(1, Math.round(sp.n * this.density));
+    for (let k = 0; k < n; k++) {
       const obj = this.merged(name) || this.bank.instance(name);
       if (!obj) return;
       obj.traverse((o) => { if (o.isMesh) { o.material = this.material(o.material, name); o.castShadow = !sp.fly; } });
