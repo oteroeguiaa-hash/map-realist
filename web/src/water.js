@@ -45,6 +45,7 @@ varying vec3 vWP;
 varying vec3 vN;
 varying float vOpen;
 varying vec3 vFlow;
+varying float vCrest;
 void gerstner(vec2 p, vec2 d, float L, float A, inout vec3 disp, inout vec3 T, inout vec3 B) {
   float k = 6.28318 / L, c = sqrt(9.8 / k);
   float f = k * (dot(d, p) - c * uTime);
@@ -64,16 +65,23 @@ void main() {
   float depth = wp.y - terrainH(wp.xz);
   if (abs(wp.x) > 1020.0 || abs(wp.z) > 1020.0) depth = 60.0;
   vec3 T = vec3(1.0, 0.0, 0.0), B = vec3(0.0, 0.0, 1.0), disp = vec3(0.0);
+  vCrest = 0.0;
   float open = smoothstep(1.5, 14.0, depth);
   #ifdef OCEAN
   float cd = distance(uCamPos.xz, wp.xz);
-  float amp = mix(0.05, 0.42, open) * uWaveAmp * (1.0 - smoothstep(500.0, 3000.0, cd));
+  float amp = mix(0.1, 0.62, open) * uWaveAmp * (1.0 - smoothstep(500.0, 3000.0, cd));
   gerstner(wp.xz, normalize(vec2(1.0, 0.35)), 41.0, amp * 0.55, disp, T, B);
   gerstner(wp.xz, normalize(vec2(0.62, 0.85)), 23.0, amp * 0.3, disp, T, B);
   gerstner(wp.xz, normalize(vec2(-0.3, 1.0)), 12.0, amp * 0.16, disp, T, B);
   gerstner(wp.xz, normalize(vec2(0.95, -0.42)), 7.0, amp * 0.09, disp, T, B);
-  float sw = 0.11 * sin(uTime * 0.55 + wp.x * 0.045 + wp.z * 0.031) + 0.05 * sin(uTime * 1.13 + wp.x * 0.11 - wp.z * 0.07);
-  disp.y += sw * (1.0 - smoothstep(0.0, 2.5, depth));
+  // moutons au large : écume au sommet des vagues les plus hautes
+  vCrest = smoothstep(0.5, 0.95, disp.y / (amp * 1.05 + 1e-3)) * 0.35 * clamp(uWaveAmp - 0.6, 0.0, 1.5);
+  // rouleaux qui arrivent vers la plage : ils se creusent quand le fond remonte, puis déferlent
+  float sp = depth * 0.95 + uTime * 1.5 + vnoise(wp.xz * 0.018) * 7.0;
+  float crest = pow(0.5 + 0.5 * sin(sp), 5.0);
+  float H = (0.35 + 0.35 * uWaveAmp) * smoothstep(0.05, 1.4, depth) * (1.0 - smoothstep(3.5, 10.0, depth));
+  disp.y += crest * H + 0.05 * sin(uTime * 1.13 + wp.x * 0.11 - wp.z * 0.07) * (1.0 - smoothstep(0.0, 2.5, depth));
+  vCrest = max(vCrest, crest * smoothstep(0.15, 0.9, depth) * (1.0 - smoothstep(2.2, 5.0, depth)));
   #endif
   wp += disp;
   vN = normalize(cross(B, T));
@@ -93,6 +101,7 @@ varying vec3 vWP;
 varying vec3 vN;
 varying float vOpen;
 varying vec3 vFlow;
+varying float vCrest;
 void main() {
   vec3 toC = uCamPos - vWP;
   float dist = length(toC);
@@ -150,8 +159,11 @@ void main() {
   #else
   float shoreF = 1.0 - smoothstep(0.0, 1.5, depth);
   float bands = sin(depth * 6.5 - t * 1.35 + vnoise(vWP.xz * 0.22) * 6.0) * 0.5 + 0.5;
-  foam = shoreF * smoothstep(0.55, 0.95, bands) * smoothstep(0.12, 0.42, fn);
-  foam += (1.0 - smoothstep(0.0, 0.12, depth)) * 0.6 * smoothstep(0.15, 0.45, fn);
+  // écume fine et filandreuse : sur la crête des rouleaux, puis traînées qui s'étalent sur le sable mouillé
+  float fs = vnoise(vWP.xz * 5.5 + vec2(t * 0.4, -t * 0.25)) * vnoise(vWP.xz * 1.6 - t * 0.11);
+  foam = vCrest * smoothstep(0.12, 0.42, fs + 0.12) * 0.95;
+  foam += shoreF * smoothstep(0.72, 0.97, bands) * smoothstep(0.22, 0.5, fs) * 0.5;
+  foam += (1.0 - smoothstep(0.0, 0.1, depth)) * 0.55 * smoothstep(0.18, 0.45, fs);
   foam *= 1.0 - far * 0.5;
   #endif
   foam = clamp(foam, 0.0, 0.95);

@@ -51,7 +51,9 @@ export class Camp {
     this.scene = scene; this.T = T; this.world = world; this.bank = bank; this.props = props;
     this.c = world.camp;
     this.lights = [];
-    this.shadows = quality > 0; // en qualité Basse, pas d'ombres pour les lampes (trop lourd)
+    // ombres des lampes seulement en qualité Élevée/Ultra : sur téléphone chaque ombre coûte une texture
+    // dans TOUS les matériaux (limite de 16), le sol ne s'afficherait plus
+    this.shadows = quality >= 2;
     this.on = 0;
     if (!this.c) return;
     this.build();

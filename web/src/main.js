@@ -50,6 +50,7 @@ const G = (window.__game = {
   mode: 'foot',
   ready: false, expo: 1, autoQ: true, qi: isMobile ? 1 : 2, frame: 0, fpsAvg: 30, scale: 1, paused: false,
 });
+{ const qp = new URLSearchParams(location.search).get('q'); if (qp !== null && QUALITY[+qp]) { G.qi = +qp; G.autoQ = false; } }
 const ui = new UI();
 
 async function boot() {
@@ -174,7 +175,7 @@ async function boot() {
     G.props = props;
     const ponds = new Ponds(scene, data, world.ponds || []);
     G.ponds = ponds;
-    const camp = new Camp(scene, data, world, bank, props, Q().veg);
+    const camp = new Camp(scene, data, world, bank, props, Q().veg >= 2 && renderer.capabilities.maxTextures >= 24 ? 2 : 0);
     G.camp = camp;
     const roads = new Roads(scene, data, world);
     await roads.init(ASSETS, allRoads);
@@ -189,6 +190,9 @@ async function boot() {
     G.player = player;
     // lampe torche et jumelles posées sur la table du campement
     if (camp.tableTop) { const t = camp.tableTop; player.addPickup('torch', t.x - 0.35, t.y, t.z - 0.1, 0.4); player.addPickup('binoculars', t.x + 0.05, t.y, t.z + 0.12, -0.3); }
+    // ombres des lampes : seulement si la carte graphique accepte assez de textures par shader (pas sur iPhone)
+    const localShadows = Q().veg >= 2 && renderer.capabilities.maxTextures >= 24;
+    player.torchLight.castShadow = localShadows;
     const torchBeam = makeBeam(14);
     torchBeam.position.copy(player.torchLight.position);
     camera.add(torchBeam);
@@ -416,7 +420,12 @@ async function boot() {
     rig.setMode('foot');
     rig.snap = true;
 
-    ui.progress(0.95, 'Premier rendu…');
+    ui.progress(0.93, 'Derniers animaux…');
+    await waitModels(GLB_ORDER, 8000);
+    // compile tous les shaders pendant l'écran de chargement (sinon le jeu saccade au début)
+    ui.progress(0.95, 'Préparation des effets graphiques…');
+    camp.group && (camp.group.visible = true);
+    try { await renderer.compileAsync(scene, camera); } catch (e) { console.warn('compilation anticipée :', e && e.message); }
     // premier rendu complet (compile les shaders)
     const clock = new THREE.Clock();
     let last = performance.now(), sunPrev = new THREE.Vector3(), ftAcc = 0, ftN = 0, qTimer = 0;

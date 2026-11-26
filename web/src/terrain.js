@@ -251,7 +251,7 @@ function makeTerrainMaterial(data, tex) {
     tSandA: { value: tex.sandA }, tSandN: { value: tex.sandN },
     tJungA: { value: tex.jungleA }, tJungN: { value: tex.jungleN },
     tGrassA: { value: tex.grassA }, tRockA: { value: tex.rockA }, tRockN: { value: tex.rockN },
-    tAshA: { value: tex.ashA }, tPathA: { value: tex.pathA }, tPathN: { value: tex.pathN }, tPebA: { value: tex.pebA },
+    tPathA: { value: tex.pathA }, tPathN: { value: tex.pathN }, tPebA: { value: tex.pebA },
   };
   patchMaterial(mat, {
     key: 'terrain',
@@ -261,7 +261,7 @@ function makeTerrainMaterial(data, tex) {
     fragmentPars: /* glsl */`
       uniform sampler2D uNormalTex; uniform sampler2D uMaskTex;
       uniform sampler2D tSandA; uniform sampler2D tSandN; uniform sampler2D tJungA; uniform sampler2D tJungN;
-      uniform sampler2D tGrassA; uniform sampler2D tRockA; uniform sampler2D tRockN; uniform sampler2D tAshA;
+      uniform sampler2D tGrassA; uniform sampler2D tRockA; uniform sampler2D tRockN;
       uniform sampler2D tPathA; uniform sampler2D tPathN; uniform sampler2D tPebA;
       vec3 decN(vec4 t) { vec2 xy = t.xy * 2.0 - 1.0; return vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0))); }
       float hblend(float w, float hA, float hB) {
@@ -335,7 +335,7 @@ function makeTerrainMaterial(data, tex) {
       // cendres volcaniques
       float wAsh = smoothstep(185.0, 250.0, hgt + (n1 - 0.5) * 60.0);
       if (wAsh > 0.01) {
-        vec3 aa = texture(tAshA, vWP.xz / 5.0).rgb;
+        vec3 aa = texture(tRockA, vWP.xz / 9.0 + 0.37).rgb; // cendres : texture de roche, désaturée (une texture de moins pour le téléphone)
         aa = mix(aa, vec3(dot(aa, vec3(0.33))), 0.6) * vec3(0.78, 0.74, 0.72);
         vec4 an = texture(tRockN, vWP.xz / 5.5);
         float b = hblend(wAsh, hL, an.b);
@@ -433,7 +433,7 @@ export async function loadTerrainTextures(base, aniso) {
   const L = (n, srgb) => loadTex(`${base}/tex/t_${n}.jpg`, { srgb, repeat: true, aniso });
   const [sandA, sandN, jungleA, jungleN, grassA, rockA, rockN, ashA, pathA, pathN, pebA] = await Promise.all([
     L('sand_a', true), L('sand_n', false), L('jungle_a', true), L('jungle_n', false), L('grass_a', true),
-    L('rock_a', true), L('rock_n', false), L('ash_a', true), L('path_a', true), L('path_n', false), L('peb_a', true),
+    L('rock_a', true), L('rock_n', false), Promise.resolve(null), L('path_a', true), L('path_n', false), L('peb_a', true),
   ]);
   return { sandA, sandN, jungleA, jungleN, grassA, rockA, rockN, ashA, pathA, pathN, pebA };
 }

@@ -41,7 +41,7 @@ if (process.argv[2] === 'preview') {
   await browser.close(); server.close(); process.exit(0);
 }
 const t0 = Date.now();
-await page.goto('http://localhost:8765/', { waitUntil: 'load' });
+await page.goto('http://localhost:8765/' + (process.env.Q ? '?q=' + process.env.Q : ''), { waitUntil: 'load' });
 try {
   await page.waitForFunction(() => window.__game && (window.__game.ready || document.getElementById('load').classList.contains('err')), null, { timeout: 600000, polling: 1000 });
 } catch (e) { logs.push('[timeout] ' + e.message); }
@@ -70,6 +70,15 @@ const shots = {
     { name: 'c_pier', setup: `G.teleport('ponton');` },
   ],
   spawn: [{ name: 'spawn', setup: '' }],
+  shore: [
+    { name: 'shore_low', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x+2, 2.2, s.z+8); G.rig.yaw=Math.PI*1.0; G.rig.pitch=-0.12;` },
+    { name: 'shore_high', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x, 14, s.z-10); G.rig.yaw=Math.PI; G.rig.pitch=-0.35;` },
+  ],
+  // nombre de textures utilisées par chaque shader (limite iPhone : 16 dans le fragment shader)
+  samplers: [{ name: 'samplers', setup: `G.sky.setHour(20.5);`, after: `
+    const gl=G.renderer.getContext(); const out=[];
+    for (const p of G.renderer.info.programs) { const pr=p.program; const n=gl.getProgramParameter(pr, gl.ACTIVE_UNIFORMS); let c=0; for(let i=0;i<n;i++){ const u=gl.getActiveUniform(pr,i); if([gl.SAMPLER_2D,gl.SAMPLER_CUBE,gl.SAMPLER_3D,gl.SAMPLER_2D_SHADOW,gl.SAMPLER_2D_ARRAY,gl.UNSIGNED_INT_SAMPLER_2D,gl.INT_SAMPLER_2D].includes(u.type)) c+=u.size; } out.push([c, p.name]); }
+    out.sort((a,b)=>b[0]-a[0]); return 'max: ' + out.slice(0,6).map(x=>x.join(' ')).join(' | ') + ' — programmes: ' + out.length;` }],
   crash: [
     { name: 'crash_big', setup: `
       const F=G.veg, I=F.I, b=G.buggy; let best=-1, bd=1e9; for (let i=0;i<I.n;i++){ const t=F.types[I.t[i]]; if(t.name!=='grand arbre'||F.dead[i]) continue; const d=Math.hypot(I.x[i]-G.world.spawn.x,I.z[i]-G.world.spawn.z); if(d<bd){bd=d;best=i;} }

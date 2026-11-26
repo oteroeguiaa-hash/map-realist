@@ -39,7 +39,7 @@ const copy = (rel) => {
   files.push('assets/' + rel);
 };
 for (const f of ['world.json', 'terrain.bin', 'clouds.bin']) copy(f);
-for (const f of fs.readdirSync(path.join(ROOT, 'assets/tex'))) if (!/^t_(grass|ash|peb)_n/.test(f)) copy('tex/' + f);
+for (const f of fs.readdirSync(path.join(ROOT, 'assets/tex'))) if (!/^t_(grass|ash|peb)_n|^t_ash_a/.test(f)) copy('tex/' + f);
 for (const f of fs.readdirSync(path.join(ROOT, 'assets/hdri'))) copy('hdri/' + f);
 if (fs.existsSync(path.join(ROOT, 'assets/glb'))) for (const f of fs.readdirSync(path.join(ROOT, 'assets/glb'))) copy('glb/' + f);
 const size = files.reduce((a, f) => a + fs.statSync(path.join(DIST, f)).size, 0) + Buffer.byteLength(html);

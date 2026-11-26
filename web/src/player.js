@@ -26,7 +26,7 @@ export class Player {
     // lampe torche : projecteur attaché à la caméra (toujours présent, éteint = puissance nulle)
     this.torchOn = false; this.beamAngle = 0.32;
     const L = new THREE.SpotLight(0xfff1dc, 0, 60, this.beamAngle, 0.95, 2);
-    L.castShadow = true; L.shadow.mapSize.set(1024, 1024); L.shadow.bias = -0.0006; L.shadow.autoUpdate = false;
+    L.castShadow = false; L.shadow.mapSize.set(1024, 1024); L.shadow.bias = -0.0006; L.shadow.autoUpdate = false;
     L.position.set(0.22, -0.22, -0.35);
     L.target.position.set(0.04, -0.12, -12);
     camera.add(L); camera.add(L.target);

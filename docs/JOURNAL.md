@@ -90,3 +90,10 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Les 6 accessoires gardent 100 % de leurs triangles (bougeoir : 213 000 ; barrière : 24 000 chacune) ; le campement n'est affiché qu'à moins de 90 m.
 - Mesure (Chromium logiciel, Moyen, départ) : 1,98 M triangles, 258 appels de dessin.
 - Pas encore fait : vagues et écume sur la mer, vrai monde sous-marin.
+
+## 26/11/2026 — Démo web : correctif « sol disparu » sur iPhone, vagues, démarrage
+
+- Bug : sur iPhone le sol ne s'affichait plus (on ne voyait que la mer). Cause : les ombres des lampes du campement ajoutaient des textures à tous les matériaux ; le shader du sol dépassait la limite de 16 textures de l'iPhone et ne compilait plus. Correctif : ombres des lampes seulement si la carte graphique accepte au moins 24 textures (ordinateur, qualité Élevée/Ultra) ; une texture de moins dans le sol (les cendres réutilisent la roche). Test automatique ajouté (`node tools/test.mjs samplers`) : 16 au maximum en qualité Moyenne.
+- Démarrage : tous les shaders sont compilés pendant l'écran de chargement, et on attend les animaux avant de lancer (moins de saccades au début).
+- Mer : vagues plus hautes, rouleaux qui arrivent vers la plage et se creusent quand le fond remonte ; écume fine sur la crête des rouleaux et moutons au large par vent fort.
+- Test de qualité forcée : `?q=0..3` dans l'adresse.
