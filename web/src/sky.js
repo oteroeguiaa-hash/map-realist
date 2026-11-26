@@ -161,7 +161,7 @@ export class Sky {
     this.faceIdx = 0;
     this.pmremTimer = 0;
     this.dirty = true;
-    const size = [192, 256, 320, 384][quality] || 256;
+    const size = [256, 384, 512, 640][quality] || 384;
     this.cubeRT = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.envRT = null;
@@ -186,7 +186,7 @@ export class Sky {
     this.faceU = {
       uFace: { value: 0 }, uSize: { value: size }, uSunI: { value: SUN_I },
       uSunCloud: { value: new THREE.Color() }, uAmbTop: { value: new THREE.Color() }, uAmbBot: { value: new THREE.Color() },
-      uGround: { value: new THREE.Color() }, uSteps: { value: [24, 32, 40, 48][quality] || 32 },
+      uGround: { value: new THREE.Color() }, uSteps: { value: [24, 32, 40, 48][quality] || 32 }, uFrame: { value: 0 },
     };
     const faceMat = new THREE.ShaderMaterial({
       uniforms: { ...this.faceU, ...this.cloudU, uSunDir: U.uSunDir, uCamPos: U.uCamPos, uTime: U.uTime },
@@ -194,7 +194,7 @@ export class Sky {
       fragmentShader: /* glsl */`
         precision highp float;
         uniform int uFace; uniform float uSize; uniform float uSunI; uniform vec3 uSunDir; uniform vec3 uCamPos; uniform float uTime;
-        uniform vec3 uSunCloud; uniform vec3 uAmbTop; uniform vec3 uAmbBot; uniform vec3 uGround; uniform float uSteps;
+        uniform vec3 uSunCloud; uniform vec3 uAmbTop; uniform vec3 uAmbBot; uniform vec3 uGround; uniform float uSteps; uniform float uFrame;
         ${GLSL_ATMOS}
         ${GLSL_CLOUDS}
         float hg(float c, float g) { float gg = g * g; return (1.0 - gg) / (4.0 * 3.14159 * pow(1.0 + gg - 2.0 * g * c, 1.5)); }
@@ -228,7 +228,7 @@ export class Sky {
             if (t0 < 90000.0) {
               float steps = uSteps * mix(1.0, 0.6, smoothstep(0.0, 0.4, d.y));
               float dt = (t1 - t0) / steps;
-              float t = t0 + dt * ign(gl_FragCoord.xy);
+              float t = t0 + dt * fract(ign(gl_FragCoord.xy) + uFrame * 0.618034);
               float cosT = dot(d, uSunDir);
               float ph = mix(hg(cosT, 0.75), hg(cosT, -0.2), 0.35) * 4.0 * 3.14159;
               float firstHit = -1.0;
@@ -250,12 +250,12 @@ export class Sky {
                     od += cloudDensity(lp, lh, j < 2) * ls;
                     ls *= 1.7;
                   }
-                  float sig = 0.045;
+                  float sig = 0.062;
                   float Ts = exp(-od * sig) + 0.4 * exp(-od * sig * 0.22) + 0.15 * exp(-od * sig * 0.06);
                   float powder = 1.0 - exp(-dens * sig * 320.0);
-                  vec3 sunL = uSunCloud * Ts * ph * mix(0.55, 1.0, powder);
-                  vec3 amb = mix(uAmbBot, uAmbTop, clamp(hf, 0.0, 1.0)) * mix(0.8, 1.0, powder);
-                  vec3 S = (sunL + amb) * 0.92;
+                  vec3 sunL = uSunCloud * Ts * ph * mix(0.75, 1.0, powder);
+                  vec3 amb = mix(uAmbBot, uAmbTop, clamp(hf, 0.0, 1.0)) * 1.35;
+                  vec3 S = (sunL + amb) * 1.05;
                   float se = dens * sig;
                   float Tst = exp(-se * dt);
                   L += T * (S - S * Tst);
@@ -274,6 +274,7 @@ export class Sky {
         }`,
       depthTest: false, depthWrite: false,
     });
+    this.faceMat = faceMat;
     this.faceScene = new THREE.Scene();
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), faceMat);
     quad.frustumCulled = false;

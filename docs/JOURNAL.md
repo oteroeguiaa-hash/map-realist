@@ -68,3 +68,13 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Nouveau sous-bois : fougères fern_02, touffes grass_medium_01, othonna (côte, volcan), racines root_cluster_01. Nouveaux rochers : boulder_01, namaqualand_boulder_02/05, rock_moss_set_02 (2 à 5 m), parois namaqualand_cliff_01 et rock_face_02 sur les pentes et autour de la cascade, mountainside sur le volcan, galets sand_rocks_small_01 sur les plages, troncs dead_tree_trunk_02.
 - Éclairage d'environnement : stream_2k.exr (EXRLoader), tourné pour que son soleil coïncide avec celui du jeu. Le ciel visible reste le ciel physique (la photo montre une vallée boisée, pas un horizon marin).
 - Mesure (Chromium logiciel, Moyen, jungle vue d'en haut) : 1,84 M triangles ombres comprises. Téléchargement total : 40 Mo.
+
+## 26/11/2026 — Démo web : relief, herbe partout, animaux ×10, nuages nets
+
+- Grands arbres : un seul fût d'écorce continu du sol à la couronne, évasé avec des contreforts (le pied scanné jungle_tree, qui faisait des cassures, est retiré).
+- Netteté : résolution jamais sous 72 % (on baisse la qualité plutôt que la résolution), feuilles anticrénelées (alpha-to-coverage), couleurs moins saturées.
+- Nuages : cubemap plus fine (384 px en Moyen, 512 en Élevé), plus blancs et plus opaques. Essai d'accumulation temporelle abandonné (ciel assombri).
+- Relief cuit dans les hauteurs : dunes et bosses sur le sable, buttes dans l'herbe et sous la jungle (routes, piste, départ et bassin restent plats). Buggy, joueur et plantes suivent ce relief.
+- Touffes d'herbe (grass_medium_01) et fougères partout autour du joueur, penchées vers le bas des pentes ; le vent couche les petites plantes.
+- Animaux : environ 330 (tigres 14, jaguars 14, sangliers 30, singes 60, crabes 40, oiseaux 84…), avec leurs cris synthétisés (singes, perroquets, mouettes, tigre, sanglier, crocodile, sifflements), placés à gauche/droite selon leur position.
+- Mesure (Chromium logiciel, Moyen, jungle vue d'en haut) : 1,65 M triangles ombres comprises, 171 appels de dessin ; ~420 appels près du départ (animaux).

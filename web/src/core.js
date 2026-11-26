@@ -110,6 +110,9 @@ export function patchMaterial(mat, opts = {}) {
           lw /= max(dot(lw, lw), 1e-4);
           float sway = (sin(uTime * 1.3 + ph) * 0.55 + gust * 0.9) * flex * flex * uWind;
           transformed += lw * sway * ${opts.windAmp || '0.35'};
+          // le vent couche les petites plantes dans sa direction (et les aplatit un peu)
+          transformed += lw * flex * flex * uWind * gust * ${opts.windLean || '0.0'};
+          transformed.y -= flex * flex * uWind * gust * ${opts.windLean || '0.0'} * 0.35;
           transformed.y -= abs(sway) * 0.04;
           transformed += objectNormal * sin(uTime * 5.3 + ph * 7.0) * flex * 0.035 * uWind;
           // branches et palmes : chacune oscille avec son propre rythme, d'autant plus qu'elle est loin du tronc

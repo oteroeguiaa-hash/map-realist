@@ -25,7 +25,7 @@ const GradeShader = {
       c *= uExpo;
       // étalonnage photo : couleurs naturelles (un peu moins saturées), contraste doux autour du gris moyen
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = max(mix(vec3(l), c, 0.93), vec3(0.0));
+      c = max(mix(vec3(l), c, 0.9), vec3(0.0));
       c = pow(c / 0.18 + 1e-5, vec3(1.07)) * 0.18;
       vec2 q = vUv - 0.5;
       c *= 1.0 - uVig * smoothstep(0.25, 0.85, dot(q, q) * 2.2);

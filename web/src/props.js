@@ -106,7 +106,11 @@ export class Props {
       im.castShadow = t.name !== 'sandrocks'; im.receiveShadow = true;
       im.frustumCulled = false;
       im.count = 0;
-      im.userData.R = t.name === 'sandrocks' ? 80 : Math.max(...t.size) > 6 ? 1500 : 220;
+      im.userData.R = t.name === 'sandrocks' ? 80 : Math.max(...t.size) > 6 ? 1200 : 220;
+      // ombres : seulement les rochers proches (les instances sont triées par distance)
+      im.userData.sc = 0;
+      im.onBeforeShadow = function () { this._c = this.count; this.count = Math.min(this.count, this.userData.sc); };
+      im.onAfterShadow = function () { this.count = this._c; };
       this.scene.add(im);
       this.inst[k] = im;
     }
@@ -226,10 +230,15 @@ export class Props {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new V3(), p = new V3();
     for (const [name, list] of Object.entries(this.lists)) {
       const im = this.inst[name], R = im.userData.R;
-      let n = 0;
+      let n = 0, shc = 0;
+      const near = [];
       for (const it of list) {
-        const dx = it.x - cam.x, dz = it.z - cam.z;
-        if (dx * dx + dz * dz > R * R) continue;
+        const dx = it.x - cam.x, dz = it.z - cam.z, d2 = dx * dx + dz * dz;
+        if (d2 <= R * R) near.push([d2, it]);
+      }
+      near.sort((a, b) => a[0] - b[0]);
+      for (const [d2, it] of near) {
+        if (d2 < 90 * 90) shc = n + 1;
         e.set(it.tilt, it.rot, it.tilt * 0.5);
         q.setFromEuler(e);
         sc.setScalar(it.s);
@@ -239,6 +248,7 @@ export class Props {
         n++;
       }
       im.count = n;
+      im.userData.sc = shc;
       im.instanceMatrix.needsUpdate = true;
       im.instanceColor.needsUpdate = true;
     }

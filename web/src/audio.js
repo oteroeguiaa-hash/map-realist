@@ -96,6 +96,54 @@ export class Sound {
     s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random()); s.stop(t + 1.5);
     for (let k = 0; k < 6; k++) setTimeout(() => this.chop(0.35 * vol), 40 + Math.random() * 500);
   }
+  // cris d'animaux synthétisés, placés à gauche ou à droite selon leur position
+  animal(kind, vol, pan) {
+    const c = this.ctx; if (!c) return;
+    const t = c.currentTime, out = c.createGain();
+    out.gain.value = vol;
+    let node = out;
+    if (c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; out.connect(p); node = p; }
+    node.connect(this.master);
+    const tone = (type, f0, f1, t0, len, amp, filt) => {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(Math.max(f1, 20), t0 + len * 0.8);
+      g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(amp, t0 + Math.min(0.03, len * 0.2)); g.gain.exponentialRampToValueAtTime(0.001, t0 + len);
+      let n = o;
+      if (filt) { const f = c.createBiquadFilter(); f.type = filt[0]; f.frequency.value = filt[1]; f.Q.value = filt[2] || 1; o.connect(f); n = f; }
+      n.connect(g); g.connect(out); o.start(t0); o.stop(t0 + len + 0.05);
+      return o;
+    };
+    const noise = (t0, len, amp, type, freq, q = 0.8) => {
+      const s = c.createBufferSource(); s.buffer = this.white;
+      const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = c.createGain(); g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(amp, t0 + 0.04); g.gain.exponentialRampToValueAtTime(0.001, t0 + len);
+      s.connect(f); f.connect(g); g.connect(out); s.start(t0, Math.random()); s.stop(t0 + len + 0.05);
+    };
+    const R = Math.random;
+    if (kind === 'monkey') {
+      // « hou-hou-hou… ha-ha-ha » qui monte en excitation
+      const n = 4 + Math.floor(R() * 5), base = 320 + R() * 120;
+      for (let i = 0; i < n; i++) { const tt = t + i * (0.16 - i * 0.008); const up = 1 + i * 0.12; tone('triangle', base * up, base * up * 1.6, tt, 0.13, 0.22, ['bandpass', 900, 1.5]); }
+      for (let i = 0; i < 3 + Math.floor(R() * 3); i++) tone('sawtooth', 900 + R() * 200, 650, t + n * 0.14 + i * 0.1, 0.08, 0.12, ['bandpass', 1500, 2]);
+    } else if (kind === 'parrot') {
+      for (let i = 0; i < 1 + Math.floor(R() * 2); i++) { const o = tone('sawtooth', 1100 + R() * 300, 1700, t + i * 0.32, 0.26, 0.16, ['bandpass', 2000, 3]); const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 32; lg.gain.value = 180; l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(t + 0.8); }
+    } else if (kind === 'aracari') {
+      for (let i = 0; i < 3; i++) tone('square', 1800 + R() * 200, 1500, t + i * 0.12, 0.06, 0.08, ['bandpass', 2200, 4]);
+    } else if (kind === 'seagull') {
+      for (let i = 0; i < 2 + Math.floor(R() * 3); i++) tone('triangle', 1500 + R() * 200, 850, t + i * 0.38, 0.32, 0.14, ['bandpass', 1400, 1.2]);
+    } else if (kind === 'tiger' || kind === 'jaguar') {
+      const f = kind === 'tiger' ? 95 : 130;
+      tone('sawtooth', f * 1.3, f * 0.75, t, 1.5, 0.5, ['lowpass', 700, 1.5]);
+      tone('sawtooth', f * 0.66, f * 0.5, t + 0.05, 1.4, 0.35, ['lowpass', 400, 1]);
+      noise(t, 1.3, 0.25, 'bandpass', 500, 0.7);
+    } else if (kind === 'boar') {
+      for (let i = 0; i < 3 + Math.floor(R() * 3); i++) { noise(t + i * 0.2, 0.14, 0.35, 'lowpass', 380, 2); tone('sawtooth', 110, 80, t + i * 0.2, 0.12, 0.15, ['lowpass', 500]); }
+    } else if (kind === 'croc') {
+      tone('sine', 52, 40, t, 1.4, 0.6); noise(t, 1.0, 0.15, 'lowpass', 200);
+    } else if (kind === 'hiss') {
+      noise(t, 0.7, 0.2, 'highpass', 3500, 0.5);
+    }
+  }
   bird(vol) {
     const c = this.ctx, o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
     const f0 = 1800 + Math.random() * 2600, n = 2 + Math.floor(Math.random() * 4);

@@ -12,6 +12,7 @@ import { Player } from './player.js';
 import { Fauna } from './fauna.js';
 import { Roads, spurFromSpawn, stampRoad } from './roads.js';
 import { Lumber } from './lumber.js';
+import { GrassField } from './grassfield.js';
 import { Builder, PIECES } from './build.js';
 
 // sauvegarde locale (arbres abattus, bois, constructions) : retrouvée au retour sur ce téléphone
@@ -30,14 +31,14 @@ import { Sound } from './audio.js';
 const ASSETS = 'assets';
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
 const QUALITY = [
-  { name: 'Bas', scale: 0.62, msaa: 0, shadow: 1024, shadowR: 60, sky: 0, terrain: 0, veg: 0 },
-  { name: 'Moyen', scale: 0.78, msaa: 2, shadow: 1536, shadowR: 80, sky: 1, terrain: 1, veg: 1 },
+  { name: 'Bas', scale: 0.8, msaa: 0, shadow: 1024, shadowR: 60, sky: 0, terrain: 0, veg: 0 },
+  { name: 'Moyen', scale: 0.88, msaa: 2, shadow: 1536, shadowR: 80, sky: 1, terrain: 1, veg: 1 },
   { name: 'Élevé', scale: 0.92, msaa: 4, shadow: 2048, shadowR: 105, sky: 2, terrain: 2, veg: 2 },
   { name: 'Ultra', scale: 1.0, msaa: 4, shadow: 2048, shadowR: 130, sky: 3, terrain: 3, veg: 3 },
 ];
 
 // ordre de chargement des modèles .glb : végétation d'abord, puis rochers, véhicules, outils, animaux
-const GLB_ORDER = ['palm', 'plants', 'jungle', 'fern2', 'grass2', 'othonna', 'roots',
+const GLB_ORDER = ['palm', 'plants', 'fern2', 'grass2', 'othonna', 'roots',
   'boulder', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'buggy', 'plane', 'axe', 'rivelaine',
   'crab', 'seagull', 'parrot', 'aracari', 'parrots', 'monkey', 'boar', 'tiger', 'jaguar', 'komodo', 'python', 'turtle', 'fishschool', 'shark', 'croc'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -84,6 +85,7 @@ async function boot() {
     const spur = spurFromSpawn(world);
     if (spur) stampRoad(data, spur);
     const allRoads = world.roads.concat(spur ? [spur] : []);
+    data.addRelief(world);
     data.makeTextures();
     G.terrain = data;
 
@@ -148,11 +150,13 @@ async function boot() {
     G.water = water;
 
     ui.progress(0.5, 'Palmiers, arbres géants et plantes de la jungle…');
-    await waitModels(['palm', 'plants', 'jungle', 'fern2', 'grass2', 'othonna', 'roots'], 30000);
+    await waitModels(['palm', 'plants', 'fern2', 'grass2', 'othonna', 'roots'], 30000);
     await nextFrame();
     const veg = new Flora(renderer, scene, data, world, atlasRects, Q().veg);
     await veg.init(ASSETS, bank, (p, msg) => ui.progress(0.5 + p * 0.25, msg));
     G.veg = veg;
+    const grassField = new GrassField(scene, data, veg, Q().veg);
+    G.grassField = grassField;
     wl.setCanopy(veg.canopyList());
 
     ui.progress(0.78, 'Herbe, rochers, avions…');
@@ -187,6 +191,7 @@ async function boot() {
       return out.set(groundAt(x - k, z) - groundAt(x + k, z), 2 * k, groundAt(x, z - k) - groundAt(x, z + k)).normalize();
     };
     player.groundAt = groundAt;
+    grassField.excl = (x, z) => builder.pieces.length > 0 && onBuilt(x, z);
     let saveT = null;
     const save = () => { clearTimeout(saveT); saveT = setTimeout(() => writeSave({ ...lumber.save(), builds: builder.save() }), 400); };
     {
@@ -219,6 +224,7 @@ async function boot() {
     };
     const sound = new Sound();
     G.sound = sound;
+    fauna.sound = sound;
 
     const post = new Post(renderer, scene, camera, Q().msaa);
     G.post = post;
@@ -228,6 +234,7 @@ async function boot() {
       const q = Q();
       terrain.setQuality(q.terrain);
       veg.setQuality(q.veg);
+      grassField.setQuality(q.veg);
       sun.shadow.mapSize.set(q.shadow, q.shadow);
       if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
       if (post.msaa !== q.msaa) post.setMSAA(q.msaa);
@@ -459,6 +466,7 @@ async function boot() {
       water.update(camera, sky.weather);
       props.update(camera, dt);
       roads.update(camera);
+      grassField.update(camera);
       lumber.update(dt);
       sea.update(dt, camera);
       fauna.update(dt, camera, G.mode === 'foot' && rig.mode !== 'drone' ? player.pos : null);
@@ -487,9 +495,9 @@ async function boot() {
           let s = G.scale;
           if (avg > target * 1.18) s *= 0.9;
           else if (avg < target * 0.8) s *= 1.04;
-          s = clamp(s, 0.5, Q().scale);
+          s = clamp(s, 0.72, Q().scale);
           if (Math.abs(s - G.scale) > 0.02) { G.scale = s; resize(); }
-          if (G.scale <= 0.52 && avg > target * 1.3 && G.qi > 0) { G.qi--; applyQuality(); G.scale = Q().scale * 0.8; resize(); }
+          if (G.scale <= 0.74 && avg > target * 1.25 && G.qi > 0) { G.qi--; applyQuality(); G.scale = Q().scale; resize(); }
         }
       }
       if (!G.ready && G.frame > 2) {

@@ -65,7 +65,7 @@ export class Lumber {
     if (!s) {
       const ty = this.flora.types[t];
       const giant = ty.name === 'grand arbre';
-      const hc = giant ? 2.0 : Math.min(0.5, ty.h * 0.08);
+      const hc = giant ? 0.9 : Math.min(0.5, ty.h * 0.08);
       const parts = ty.parts.map((p) => ({ ...splitGeo(p.geo, hc), mat: this.material(p.mat) }));
       s = { hc, parts, ty };
       this.split.set(t, s);

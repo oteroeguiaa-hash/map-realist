@@ -11,6 +11,7 @@ const QUAL = [
   { tree: 90, bush: 32, shadow: 65, impBush: 200, density: 1.0 },
   { tree: 120, bush: 42, shadow: 85, impBush: 260, density: 1.0 },
 ];
+const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _ax = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 const FADE_TREE = { value: new THREE.Vector2(55, 65) };
 const FADE_BUSH = { value: new THREE.Vector2(20, 24) };
 
@@ -26,11 +27,11 @@ function natureMat(src, cat, opts = {}) {
     alphaTest: leaf ? 0.5 : 0, transparent: false, depthWrite: true, side: THREE.DoubleSide, vertexColors: false,
   });
   if (src.normalScale) m.normalScale.copy(src.normalScale);
-  if (leaf) { m.color.multiply(new THREE.Color(0.8, 0.84, 0.7)); m.roughness = Math.max(m.roughness, 0.7); }
+  if (leaf) { m.color.multiply(new THREE.Color(0.74, 0.8, 0.62)); m.roughness = Math.max(m.roughness, 0.7); m.alphaToCoverage = true; }
   if (opts.tint) m.color.multiply(opts.tint);
   const uniforms = { uFade: cat === 'tree' ? FADE_TREE : FADE_BUSH };
   if (opts.bend) uniforms.uLeanH = opts.leanH;
-  patchMaterial(m, { key: 'nat', wind: true, alphaBoost: leaf, fade: true, leaf, bend: !!opts.bend, canopy: 0.35, uniforms, windAmp: '0.3' });
+  patchMaterial(m, { key: 'nat' + cat, windLean: cat === 'bush' ? '0.32' : '0.0', wind: true, alphaBoost: leaf, fade: true, leaf, bend: !!opts.bend, canopy: 0.35, uniforms, windAmp: cat === 'bush' ? '0.5' : '0.3' });
   matCache.set(key, m);
   return m;
 }
@@ -175,7 +176,7 @@ export class Flora {
       loadTex(`${base}/tex/veg_a.webp`, { srgb: true, aniso: 4 }),
       loadTex(`${base}/tex/veg_n.jpg`, { srgb: false, aniso: 4 }),
     ]);
-    const atlasMat = (cat) => patchMaterial(new THREE.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new THREE.Vector2(0.8, 0.8), alphaTest: 0.5, transparent: false, depthWrite: true, side: THREE.DoubleSide, vertexColors: true, roughness: 0.72 }), {
+    const atlasMat = (cat) => patchMaterial(new THREE.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new THREE.Vector2(0.8, 0.8), alphaTest: 0.5, alphaToCoverage: true, transparent: false, depthWrite: true, side: THREE.DoubleSide, vertexColors: true, roughness: 0.72 }), {
       key: 'atlas', wind: true, alphaBoost: true, fade: true, canopy: 0.35, uniforms: { uFade: cat === 'tree' ? FADE_TREE : FADE_BUSH },
       afterLights: `{ vec3 vdir = normalize(vWP - uCamPos); float bl = pow(max(dot(vdir, uSunDir), 0.0), 3.0);
         float leaf = 1.0 - step(vMapUv.x, 0.5) * step(0.5, vMapUv.y);
@@ -238,26 +239,23 @@ export class Flora {
     realParts(glb('roots'), null, 1.0, 'roots', { still: true });
     progress(0.3, 'Grands arbres de la jungle…');
     // --- grand tronc scanné + couronne de vraies feuilles ---
-    const jungle = glb('jungle');
-    if (jungle) {
-      // Le modèle scanné n'est que la base d'un arbre (contreforts) : il sert de pied, puis un vrai fût
-      // d'écorce monte jusqu'à la couronne de feuilles à 14-18 m. Fini les « piliers de roche ».
-      const rootH = 2.8;
-      for (let k = 0; k < 3; k++) {
-        const p = glbParts(jungle, rootH, 'tree', { tint: new THREE.Color(0.78, 0.68, 0.56) });
-        if (!p) break;
-        let rTop = 0.3;
-        for (const part of p.parts) {
-          const pa = part.geo.attributes.position;
-          for (let i = 0; i < pa.count; i++) if (pa.getY(i) > rootH * 0.88) rTop = Math.max(rTop, Math.hypot(pa.getX(i), pa.getZ(i)));
-        }
-        rTop = Math.min(rTop * 0.95, 0.9);
-        const top = 14 + k * 2, CR = 7 + k, rnd = mulberry32(950 + k), b = new GeoBuilder();
-        tube(b, [new V3(0, rootH * 0.7, 0), new V3((rnd() - 0.5) * 0.8, top * 0.45, (rnd() - 0.5) * 0.8), new V3((rnd() - 0.5) * 1.2, top * 0.8, (rnd() - 0.5) * 1.2), new V3((rnd() - 0.5) * 1.4, top, (rnd() - 0.5) * 1.4)],
-          [rTop, rTop * 0.82, rTop * 0.66, rTop * 0.55], 9, A.treeBark, 2.4, { ao0: 0.55, ao1: 0.9, flex1: 0.03 });
-        p.parts.push({ geo: makeCanopy(A, 900 + k, top - 0.5, CR, b), mat: this.atlasTree });
-        reg('giant', add({ cat: 'tree', name: 'grand arbre', parts: p.parts, h: top + CR * 0.8, trunkR: rTop * 1.4, crownR: CR + 1 }));
+    // grands arbres : un seul fût d'écorce continu du sol à la couronne (évasé à la base, contreforts),
+    // plus de pied scanné qui faisait des cassures dans le tronc
+    for (let k = 0; k < 4; k++) {
+      const rnd = mulberry32(950 + k * 13), b = new GeoBuilder();
+      const r = 0.5 + k * 0.06, top = 14 + k * 1.6, CR = 7 + k * 0.7;
+      const lean = [(rnd() - 0.5) * 1.4, (rnd() - 0.5) * 1.4];
+      tube(b, [new V3(0, -0.4, 0), new V3(0, 0.6, 0), new V3(lean[0] * 0.15, 2.2, lean[1] * 0.15), new V3(lean[0] * 0.5, top * 0.45, lean[1] * 0.5), new V3(lean[0] * 0.8, top * 0.8, lean[1] * 0.8), new V3(lean[0], top, lean[1])],
+        [r * 2.1, r * 1.55, r * 1.12, r * 0.95, r * 0.78, r * 0.6], 12, A.treeBark, 2.4, { ao0: 0.5, ao1: 0.9, flex1: 0.03 });
+      // contreforts : racines plates qui partent du tronc et plongent dans le sol
+      const nR = 4 + (k % 2);
+      for (let q = 0; q < nR; q++) {
+        const a = (q / nR) * Math.PI * 2 + rnd() * 0.6, ca = Math.cos(a), sa = Math.sin(a), L = 1.6 + rnd() * 1.2;
+        tube(b, [new V3(ca * r * 0.6, 1.8 + rnd() * 0.6, sa * r * 0.6), new V3(ca * (r + L * 0.45), 0.5, sa * (r + L * 0.45)), new V3(ca * (r + L), -0.25, sa * (r + L))],
+          [r * 0.42, r * 0.28, r * 0.1], 6, A.treeBark, 1.6, { ao0: 0.55, ao1: 0.75 });
       }
+      const geo = makeCanopy(A, 900 + k, top - 0.5, CR, b);
+      reg('giant', add({ cat: 'tree', name: 'grand arbre', parts: [{ geo, mat: this.atlasTree }], h: top + CR * 0.8, trunkR: r * 1.3, crownR: CR + 1 }));
     }
     // Seuls les modèles .glb du joueur sont affichés. Les versions générées ne servent que de secours
     // si un modèle n'a pas pu être chargé (sinon l'île serait vide).
@@ -281,7 +279,7 @@ export class Flora {
     const spawn = this.world.spawn, pier = this.world.pier;
     const nearPier = (x, z) => { const dx = pier.x1 - pier.x0, dz = pier.z1 - pier.z0, L2 = dx * dx + dz * dz; const t = clamp(((x - pier.x0) * dx + (z - pier.z0) * dz) / L2, -0.6, 1); return Math.hypot(x - pier.x0 - dx * t, z - pier.z0 - dz * t) < 14; };
     const choose = (all) => { const list = all.filter((e) => A[e[0]] && e[1] > 0); if (!list.length) return null; const tot = list.reduce((a, b) => a + b[1], 0); let u = rnd() * tot; for (const [k, w] of list) { u -= w; if (u <= 0) return k; } return list[0][0]; };
-    const I = { x: [], y: [], z: [], r: [], s: [], t: [], c: [], l: [] };
+    const I = { x: [], y: [], z: [], r: [], s: [], t: [], c: [], l: [], ta: [], ax: [], az: [] };
     const nrm = new V3();
     let trees = 0, bushes = 0;
     const TC = 4.6;
@@ -312,6 +310,7 @@ export class Flora {
         lean = h < 5 ? 0.2 + rnd() * 0.55 : rnd() * 0.35;
         if (h < 5 && rnd() < 0.6) { const dx = -nrm.x, dz = -nrm.z, l = Math.hypot(dx, dz); if (l > 0.01) rot = Math.atan2(-dz / l, dx / l) + (rnd() - 0.5) * 2.2; }
       }
+      I.ta.push(0); I.ax.push(0); I.az.push(0);
       I.x.push(x); I.y.push(h - 0.08); I.z.push(z); I.r.push(rot); I.s.push(0.82 + rnd() * 0.36); I.t.push(type); I.c.push(0.84 + rnd() * 0.28); I.l.push(lean);
       trees++;
     }
@@ -339,13 +338,14 @@ export class Flora {
       if (rnd() > p * this.q.density) continue;
       const arch = choose(list);
       if (!arch) continue;
+      { const hl = Math.hypot(nrm.x, nrm.z); I.ta.push(hl > 1e-3 ? Math.min(slope * 2.2, 0.75) : 0); I.ax.push(hl > 1e-3 ? nrm.z / hl : 0); I.az.push(hl > 1e-3 ? -nrm.x / hl : 0); }
       I.x.push(x); I.y.push(h - 0.04); I.z.push(z); I.r.push(rnd() * Math.PI * 2); I.s.push(edge ? 1.0 + rnd() * 0.6 : 0.75 + rnd() * 0.55); I.t.push(pick(arch)); I.c.push(0.82 + rnd() * 0.32); I.l.push(0);
       bushes++;
     }
     this.count = { trees, bushes };
     const n = I.x.length;
     this.dead = new Uint8Array(I.x.length);
-    this.I = { x: new Float32Array(I.x), y: new Float32Array(I.y), z: new Float32Array(I.z), r: new Float32Array(I.r), s: new Float32Array(I.s), t: new Uint16Array(I.t), c: new Float32Array(I.c), l: new Float32Array(I.l), n };
+    this.I = { ta: new Float32Array(I.ta), ax: new Float32Array(I.ax), az: new Float32Array(I.az), x: new Float32Array(I.x), y: new Float32Array(I.y), z: new Float32Array(I.z), r: new Float32Array(I.r), s: new Float32Array(I.s), t: new Uint16Array(I.t), c: new Float32Array(I.c), l: new Float32Array(I.l), n };
     const GC = 32, GN = W / GC;
     this.GC = GC; this.GN = GN;
     const cells = Array.from({ length: GN * GN }, () => []);
@@ -603,8 +603,13 @@ export class Flora {
       let sc = 0;
       for (let k = 0; k < n; k++) {
         const i = d[order[k] * 2 + 1], s = I.s[i], r = I.r[i], cs = Math.cos(r) * s, sn = Math.sin(r) * s, o = k * 16;
+        if (I.ta[i] > 0.02) {
+          _q.setFromAxisAngle(_ax.set(I.ax[i], 0, I.az[i]), I.ta[i]).multiply(_q2.setFromAxisAngle(_up, r));
+          _m.compose(_p.set(I.x[i], I.y[i], I.z[i]), _q, _s.setScalar(s)).toArray(A, o);
+        } else {
         A[o] = cs; A[o + 1] = 0; A[o + 2] = -sn; A[o + 3] = 0; A[o + 4] = 0; A[o + 5] = s; A[o + 6] = 0; A[o + 7] = 0;
         A[o + 8] = sn; A[o + 9] = 0; A[o + 10] = cs; A[o + 11] = 0; A[o + 12] = I.x[i]; A[o + 13] = I.y[i]; A[o + 14] = I.z[i]; A[o + 15] = 1;
+        }
         const tint = I.c[i];
         C[k * 3] = tint * (0.96 + (tint - 1) * 0.3); C[k * 3 + 1] = tint; C[k * 3 + 2] = tint * 0.93;
         if (L) L[k] = I.l[i];

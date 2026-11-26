@@ -1,6 +1,6 @@
 // Relief : données (hauteurs, masques), échantillonnage CPU, maillage CDLOD et matériau du sol.
 import * as THREE from 'three';
-import { U, WORLD, patchMaterial, clamp, loadTex } from './core.js';
+import { U, WORLD, patchMaterial, clamp, loadTex, vnoise } from './core.js';
 
 export const GLSL_HEIGHT = /* glsl */`
 uniform highp sampler2D uHeight;
@@ -52,6 +52,34 @@ export class TerrainData {
   }
   slope(x, z) { return 1 - this.normal(x, z, _n, 2).y; }
 
+  // Relief : dunes et bosses sur le sable, buttes et creux dans l'herbe et sous la jungle.
+  // Ajouté aux hauteurs elles-mêmes : le buggy, le joueur et les plantes suivent exactement ce relief.
+  addRelief(world) {
+    const N = this.N, W = this.W, h = this.h, st = world.strip, sp = world.spawn, pool = world.waterfall.pool;
+    const S = (a, b, x) => { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); };
+    const sa = st ? Math.sin(st.angle) : 0, ca = st ? Math.cos(st.angle) : 1;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const q = j * N + i, h0 = h[q];
+      if (h0 < -2.5 || h0 > 190) continue;
+      const x = (i + 0.5) / N * W - W / 2, z = (j + 0.5) / N * W - W / 2;
+      let k = 1;
+      k *= 1 - S(0.0, 0.25, this.mask(this.path, x, z));             // routes bien lisses
+      k *= 1 - 0.85 * this.mask(this.wet, x, z);                      // lits des rivières
+      if (st) { const u = (x - st.x) * sa + (z - st.z) * ca, v = (x - st.x) * ca - (z - st.z) * sa; k *= S(0, 25, Math.max(Math.abs(u) - st.length / 2, Math.abs(v) - st.width / 2)); }
+      k *= S(8, 20, Math.hypot(x - sp.x, z - sp.z));                  // point de départ plat
+      k *= S(6, 16, Math.hypot(x - pool[0], z - pool[2]) - world.waterfall.poolR);
+      if (k <= 0.001) continue;
+      let d;
+      if (h0 < 2.6) {
+        // dunes allongées dans le sens du vent + petites bosses
+        const ux = x * 0.8 + z * 0.6, uz = -x * 0.6 + z * 0.8;
+        d = ((vnoise(ux / 16, uz / 6) - 0.5) * 1.2 + (vnoise(x / 5 + 11, z / 5 - 3) - 0.5) * 0.45) * S(0.1, 1.1, h0);
+      } else {
+        d = (vnoise(x / 9 - 5, z / 9 + 8) - 0.5) * 0.9 + (vnoise(x / 4.2 + 17, z / 4.2 - 9) - 0.5) * 0.45;
+      }
+      h[q] = h0 + d * k;
+    }
+  }
   makeTextures() {
     const N = this.N, M = this.M;
     const ht = new THREE.DataTexture(this.h, N, N, THREE.RedFormat, THREE.FloatType);

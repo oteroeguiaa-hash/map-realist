@@ -9,22 +9,25 @@ const TAU = Math.PI * 2;
 
 // hab : habitat ; n : nombre ; v : vitesse de marche (m/s) ; back : l'avant du modèle est -z ; far : distance d'affichage
 const SPECIES = {
-  tiger: { n: 2, hab: 'jungle', v: 1.3, run: 7, far: 230, clip: ['walk', 'run'], shy: 9 },
-  jaguar: { n: 2, hab: 'jungle', v: 1.2, run: 7, far: 230, clip: ['walk', 'all'], shy: 9 },
-  boar: { n: 4, hab: 'jungle', v: 1.1, run: 5, far: 180, clip: ['walkfast', 'walk'], idle: ['idle', 'breath'], shy: 10 },
-  komodo: { n: 3, hab: 'coast', v: 0.7, run: 3, far: 180, back: true, shy: 4 },
-  python: { n: 3, hab: 'jungle', v: 0.3, run: 0.6, far: 70, slither: true, shy: 2 },
-  monkey: { n: 6, hab: 'jungle', v: 1.4, run: 4, far: 110, hop: true, shy: 7 },
-  crab: { n: 9, hab: 'sand', v: 0.35, run: 1.4, far: 45, side: true, shy: 3 },
-  croc: { n: 2, hab: 'pool', v: 0.6, run: 1.5, far: 200, swimY: -0.28, clip: ['swim'], shy: 0 },
-  turtle: { n: 4, hab: 'lagoon', v: 0.6, far: 120, back: true, swim: true, clip: ['swim'] },
-  fishschool: { n: 3, hab: 'lagoon', v: 0.8, far: 110, swim: true, clip: ['take', ''] },
-  shark: { n: 2, hab: 'reef', v: 1.6, far: 160, swim: true, clip: ['swim'] },
-  seagull: { n: 9, hab: 'sky', v: 9, far: 600, back: true, fly: true, clip: ['animation', ''] },
-  parrot: { n: 3, perch: true, far: 90 },
-  aracari: { n: 3, perch: true, far: 80, cut: 0.42 },
-  parrots: { n: 2, perch: true, far: 90 },
+  tiger: { n: 14, hab: 'jungle', v: 1.3, run: 7, far: 110, clip: ['walk', 'run'], shy: 7, call: 'tiger' },
+  jaguar: { n: 14, hab: 'jungle', v: 1.2, run: 7, far: 110, clip: ['walk', 'all'], shy: 7, call: 'jaguar' },
+  boar: { n: 30, hab: 'jungle', v: 1.1, run: 5, far: 90, clip: ['walkfast', 'walk'], idle: ['idle', 'breath'], shy: 8, call: 'boar' },
+  komodo: { n: 18, hab: 'coast', v: 0.7, run: 3, far: 90, back: true, shy: 4, call: 'hiss' },
+  python: { n: 16, hab: 'jungle', v: 0.3, run: 0.6, far: 60, slither: true, shy: 2, call: 'hiss' },
+  monkey: { n: 60, hab: 'jungle', v: 1.4, run: 4, far: 70, hop: true, shy: 5, call: 'monkey' },
+  crab: { n: 40, hab: 'sand', v: 0.35, run: 1.4, far: 40, side: true, shy: 3 },
+  croc: { n: 3, hab: 'pool', v: 0.6, run: 1.5, far: 160, swimY: -0.28, clip: ['swim'], shy: 0, call: 'croc' },
+  turtle: { n: 26, hab: 'lagoon', v: 0.6, far: 70, back: true, swim: true, clip: ['swim'] },
+  fishschool: { n: 16, hab: 'lagoon', v: 0.8, far: 70, swim: true, clip: ['take', ''] },
+  shark: { n: 8, hab: 'reef', v: 1.6, far: 130, swim: true, clip: ['swim'] },
+  seagull: { n: 40, hab: 'sky', v: 9, far: 260, back: true, fly: true, clip: ['animation', ''], call: 'seagull' },
+  parrot: { n: 18, perch: true, far: 80, call: 'parrot' },
+  aracari: { n: 14, perch: true, far: 70, cut: 0.42, call: 'aracari' },
+  parrots: { n: 12, perch: true, far: 80, call: 'parrot' },
 };
+// cris : portée d'écoute (m) et intervalle moyen entre deux cris d'un même animal (s)
+const CALLS = { tiger: [120, 40], jaguar: [90, 45], boar: [40, 18], hiss: [18, 25], monkey: [110, 14], croc: [50, 30], seagull: [150, 12], parrot: [80, 16], aracari: [60, 18] };
+
 
 export class Fauna {
   constructor(scene, terrain, world, flora, bank) {
@@ -99,8 +102,8 @@ export class Fauna {
 
   place(a, k) {
     const sp = a.sp, w = this.world, rnd = this.rnd;
-    const near = k < Math.ceil(sp.n * 0.6); // la majorité près du point de départ, pour qu'on les croise
-    const cx = near ? w.spawn.x : 0, cz = near ? w.spawn.z : 0, R = near ? 380 : this.T.W * 0.42;
+    const near = k < Math.ceil(sp.n * 0.75); // la plupart autour du point de départ, pour qu'on les croise
+    const cx = near ? w.spawn.x : 0, cz = near ? w.spawn.z : 0, R = near ? 320 : this.T.W * 0.42;
     if (sp.perch) {
       const tops = this.flora.palmTops(1, { x: w.spawn.x, z: w.spawn.z, r: near ? 160 : 420 }, rnd);
       if (!tops.length) return false;
@@ -186,7 +189,20 @@ export class Fauna {
       if (player && a.sp.shy && !a.fear && player.distanceTo(a.pos) < a.sp.shy) a.fear = 3;
       this.think(a, step, player);
       this.applyPose(a, step);
-      if (a.mix && vis && d < 140) a.mix.mixer.update(step);
+      if (a.mix && vis && d < 90) a.mix.mixer.update(step);
+      // cris des animaux proches
+      const call = a.sp.call && CALLS[a.sp.call];
+      if (call && this.sound && d < call[0]) {
+        a.callT = (a.callT ?? this.rnd() * call[1]) - step;
+        if (a.callT <= 0 && this.t - (this.lastCall || 0) > 0.35) {
+          a.callT = call[1] * (0.5 + this.rnd());
+          this.lastCall = this.t;
+          const dx = a.pos.x - cp.x, dz = a.pos.z - cp.z;
+          const fw = this._fw || (this._fw = new V3()); camera.getWorldDirection(fw);
+          const pan = clamp((dx * -fw.z + dz * fw.x) / Math.max(Math.hypot(dx, dz), 1), -1, 1);
+          this.sound.animal(a.sp.call, clamp(12 / (d + 6), 0.05, 1), pan);
+        }
+      }
     }
   }
 
