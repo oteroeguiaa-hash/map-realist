@@ -10,6 +10,7 @@ Sorties dans assets/tex :
 import json, math, os, random, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+from scipy import ndimage
 
 PH = sys.argv[1] if len(sys.argv) > 1 else 'ph'
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -106,7 +107,7 @@ def draw_frond(base_col, tip_col, dry=0.0, torn=0.25, seed=1, density=1.0):
     img = Image.new('RGBA', (W, Hh), (0, 0, 0, 0))
     hgt = Image.new('L', (W, Hh), 0)
     d, dh = ImageDraw.Draw(img), ImageDraw.Draw(hgt)
-    n = int(78 * density)
+    n = int(96 * density)
     for k in range(n):
         t = 0.07 + 0.92 * k / n + r.uniform(-0.003, 0.003)
         env = math.sin(min(1, (t - 0.04) / 0.95) * math.pi) ** 0.55
@@ -206,9 +207,151 @@ def draw_cluster(seed, kind):
     return img, height_to_normal(hgt.resize((512, 512), LZ).filter(ImageFilter.GaussianBlur(1)), 1.2)
 
 
-im, nm_ = draw_cluster(21, 'A'); put('clusterA', im, nm_, 0, 1024, 512, 512)
-im, nm_ = draw_cluster(22, 'B'); put('clusterB', im, nm_, 512, 1024, 512, 512)
 
+
+
+# ---------- feuilles scannées découpées une à une (Poly Haven) ----------
+def ph2(pid, kind):
+    d = f'{PH}/mdl2/{pid}'
+    files = sorted(os.listdir(d))
+    files = sorted(files, key=lambda f: 0 if 'leaves' in f else 1)
+    for f in files:
+        if kind == 'alpha' and 'alpha' in f:
+            return Image.open(os.path.join(d, f))
+        if kind != 'alpha' and kind in f and 'alpha' not in f and 'pot_' not in f and 'branch' not in f and 'bark' not in f and 'trunk' not in f:
+            return Image.open(os.path.join(d, f))
+    raise FileNotFoundError(pid + kind)
+
+
+def leaf_sprites(pid, min_area=600, max_aspect=None):
+    c = ph2(pid, 'diff').convert('RGB')
+    a = ph2(pid, 'alpha').convert('L').resize(c.size, LZ)
+    n = ph2(pid, 'nor_gl').convert('RGB').resize(c.size, LZ)
+    C, A, Nn = np.asarray(c), np.asarray(a), np.asarray(n)
+    lab, num = ndimage.label(A > 100)
+    out = []
+    for i, sl in enumerate(ndimage.find_objects(lab)):
+        m = lab[sl] == i + 1
+        if m.sum() < min_area:
+            continue
+        h, w = m.shape
+        if max_aspect and h / max(w, 1) < max_aspect:
+            continue
+        if m.sum() / float(h * w) > 0.8:   # rectangles (écorce, tiges) : pas une feuille
+            continue
+        g = C[sl][m].astype(np.float32).mean(0)
+        if g[1] < g[0] * 0.9:              # pas assez vert
+            continue
+        rgba = np.dstack([C[sl], (A[sl] * m).astype(np.uint8)])
+        out.append((Image.fromarray(rgba, 'RGBA'), Image.fromarray(Nn[sl])))
+    return out
+
+
+def rot_normal(nimg, ang_deg):
+    # tourne l'image de normales ET les vecteurs (x, y) du même angle
+    r = nimg.rotate(ang_deg, resample=Image.BICUBIC, expand=True, fillcolor=(128, 128, 255))
+    a = np.asarray(r).astype(np.float32) / 127.5 - 1
+    t = math.radians(ang_deg)
+    x, y = a[..., 0] * math.cos(t) - a[..., 1] * math.sin(t), a[..., 0] * math.sin(t) + a[..., 1] * math.cos(t)
+    out = np.dstack([x, y, a[..., 2]])
+    return Image.fromarray(np.clip((out + 1) * 127.5, 0, 255).astype(np.uint8))
+
+
+def photo_cluster(sprites, seed, n_leaves, size=512, leaf_scale=(0.16, 0.26), twig=(92, 78, 52), spread=1.0, tint=0.12, green=(1.0, 1.0, 1.0), ntwig=7):
+    r = random.Random(seed)
+    SS = 2
+    S_ = size * SS
+    img = Image.new('RGBA', (S_, S_), (0, 0, 0, 0))
+    nrm = Image.new('RGB', (S_, S_), (128, 128, 255))
+    d = ImageDraw.Draw(img)
+    base = (S_ * 0.5, S_ * 0.98)
+    tips = []
+    for k in range(ntwig):
+        a = math.radians(-90 + (k / max(ntwig - 1, 1) - 0.5) * 140 * spread + r.uniform(-10, 10))
+        L = S_ * r.uniform(0.55, 0.9)
+        pts = [base]
+        for s in range(1, 7):
+            u = s / 6
+            pts.append((base[0] + math.cos(a) * L * u + r.uniform(-8, 8), base[1] + math.sin(a) * L * u + u * u * 30))
+        d.line(pts, fill=twig + (255,), width=int(5 * SS))
+        tips.append(pts)
+    leaves = []
+    for k in range(n_leaves):
+        tw = r.choice(tips)
+        u = r.uniform(0.35, 1.0)
+        i = min(len(tw) - 2, int(u * (len(tw) - 1)))
+        px, py = tw[i]
+        ang = r.uniform(-75, 75) + (px - S_ / 2) * 0.06
+        spr, sn = r.choice(sprites)
+        sc = r.uniform(*leaf_scale) * S_ / max(spr.size)
+        leaves.append((py + r.uniform(-40, 40), px, py, ang, spr, sn, sc))
+    leaves.sort(key=lambda t: -t[0])
+    for (_, px, py, ang, spr, sn, sc) in leaves:
+        w, h = max(1, int(spr.size[0] * sc)), max(1, int(spr.size[1] * sc))
+        sp = spr.resize((w, h), LZ)
+        arr = np.asarray(sp).astype(np.float32)
+        k = 1 + r.uniform(-tint, tint)
+        arr[..., :3] *= np.array([k * r.uniform(0.94, 1.06) * green[0], k * green[1], k * r.uniform(0.9, 1.05) * green[2]])
+        sp = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), 'RGBA')
+        spr_r = sp.rotate(ang, resample=Image.BICUBIC, expand=True)
+        nr = rot_normal(sn.resize((w, h), LZ), ang)
+        ox, oy = int(px - spr_r.size[0] / 2), int(py - spr_r.size[1] * 0.85)
+        img.paste(spr_r, (ox, oy), spr_r)
+        nrm.paste(nr, (ox, oy), spr_r.split()[3].point(lambda v: 255 if v > 110 else 0))
+    return img.resize((size, size), LZ), nrm.resize((size, size), LZ)
+
+
+def grass_card(seed, w=256, h=512):
+    sprites = [s for s in leaf_sprites('grass_medium_01', min_area=300) if s[0].size[1] > s[0].size[0] * 2.2]
+    if not sprites:
+        return draw_grass(), None
+    r = random.Random(seed)
+    SS = 2
+    img = Image.new('RGBA', (w * SS, h * SS), (0, 0, 0, 0))
+    for k in range(34):
+        spr, _ = r.choice(sprites)
+        sc = r.uniform(0.55, 1.0) * h * SS / spr.size[1]
+        sp = spr.resize((max(1, int(spr.size[0] * sc)), max(1, int(spr.size[1] * sc))), LZ)
+        arr = np.asarray(sp).astype(np.float32); arr[..., :3] *= r.uniform(0.75, 1.1); sp = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), 'RGBA')
+        sp = sp.rotate(r.uniform(-14, 14), resample=Image.BICUBIC, expand=True)
+        x = int(r.uniform(0.1, 0.9) * w * SS - sp.size[0] / 2)
+        img.paste(sp, (x, h * SS - sp.size[1]), sp)
+    return img.resize((w, h), LZ), None
+
+
+def draw_monstera(seed=71, S=256):
+    r = random.Random(seed)
+    SS = 3
+    W_ = S * SS
+    mask = Image.new('L', (W_, W_), 0)
+    md = ImageDraw.Draw(mask)
+    cx, cy, R = W_ * 0.5, W_ * 0.52, W_ * 0.44
+    pts = []
+    for k in range(80):
+        t = k / 80 * math.tau
+        rr = R * (1 - 0.18 * math.cos(t) ** 8) * (0.92 if math.sin(t) > 0.85 else 1)
+        pts.append((cx + math.sin(t) * rr * 0.92, cy - math.cos(t) * rr))
+    md.polygon(pts, fill=255)
+    md.polygon([(cx, cy + R * 0.05), (cx - R * 0.12, cy + R * 1.05), (cx + R * 0.12, cy + R * 1.05)], fill=0)
+    col = Image.new('RGB', (W_, W_), (34, 76, 30))
+    cd = ImageDraw.Draw(col)
+    for side in (-1, 1):
+        for k in range(8):
+            t = 0.12 + k * 0.105
+            ang = math.radians(-80 + k * 22) if side > 0 else math.radians(-100 - k * 22)
+            x0, y0 = cx, cy - R * 0.9 + t * R * 1.7
+            x1, y1 = x0 + math.cos(ang) * R * 1.2, y0 + math.sin(ang) * R * 0.4 + R * 0.25
+            if k % 2 == 0 and k < 7:
+                md.line([((x0 + x1) / 2 + side * R * 0.2, (y0 + y1) / 2), (x1, y1)], fill=0, width=int(R * 0.06))
+            cd.line([(x0, y0), (x1, y1)], fill=(62, 112, 50), width=int(R * 0.02))
+            if k % 3 == 1:
+                hx, hy = x0 + math.cos(ang) * R * 0.35, y0 + math.sin(ang) * R * 0.12 + R * 0.08
+                md.ellipse([hx - R * 0.04, hy - R * 0.07, hx + R * 0.04, hy + R * 0.07], fill=0)
+    cd.line([(cx, cy - R * 0.95), (cx, cy + R)], fill=(90, 130, 66), width=int(R * 0.035))
+    noise = np.asarray(Image.effect_noise((W_, W_), 40).filter(ImageFilter.GaussianBlur(5))).astype(np.float32) / 255.0
+    arr = np.asarray(col).astype(np.float32) * (0.85 + 0.3 * noise[..., None])
+    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)).convert('RGBA'); img.putalpha(mask)
+    return img.resize((S, S), LZ)
 
 # --- feuilles scannées (Poly Haven) ---
 def scanned(pid):
@@ -218,10 +361,21 @@ def scanned(pid):
     return im, ph_mdl_tex(pid, 'nor_gl')
 
 
-im, nm_ = scanned('anthurium_botany_01'); put('anthurium', im, nm_, 1024, 1024, 512, 512, pad=2)
-im, nm_ = scanned('calathea_orbifolia_01'); put('calathea', im, nm_, 1536, 1024, 512, 512, pad=2)
+S_ISL = leaf_sprites('island_tree_01') + leaf_sprites('island_tree_02')
+S_PAC = leaf_sprites('pachira_aquatica_01', min_area=3000)
+S_JAC = leaf_sprites('jacaranda_tree', min_area=3000)
+print('feuilles découpées', len(S_ISL), len(S_PAC), len(S_JAC))
+im, nm_ = photo_cluster(S_ISL, 21, 78, leaf_scale=(0.17, 0.27), green=(0.74, 0.95, 0.66), ntwig=8); put('clusterA', im, nm_, 0, 1024, 512, 512, pad=3)
+im, nm_ = photo_cluster(S_PAC, 22, 16, leaf_scale=(0.3, 0.46), spread=1.1); put('clusterB', im, nm_, 512, 1024, 512, 512, pad=3)
+im, nm_ = photo_cluster(S_JAC, 23, 14, leaf_scale=(0.42, 0.62), spread=1.2, twig=(70, 62, 40)); put('clusterC', im, nm_, 1024, 1024, 512, 512, pad=3)
+c = ph2('potted_plant_02', 'diff').convert('RGB'); a = ph2('potted_plant_02', 'alpha').convert('L').resize(c.size, LZ); c.putalpha(a)
+put('syngonium', c, ph2('potted_plant_02', 'nor_gl'), 1536, 1024, 512, 512, pad=2)
+im, nm_ = scanned('anthurium_botany_01'); put('anthurium', im, nm_, 1280, 1536, 256, 256, pad=2)
+im, nm_ = scanned('calathea_orbifolia_01'); put('calathea', im, nm_, 1280, 1792, 256, 256, pad=2)
 im, nm_ = scanned('fern_02'); put('fern', im, nm_, 0, 1536, 512, 512, pad=2)
-im, nm_ = scanned('shrub_sorrel_01'); put('sorrel', im, nm_, 1280, 1536, 256, 256, pad=2)
+c = ph2('weed_plant_02', 'diff').convert('RGB'); a = ph2('weed_plant_02', 'alpha').convert('L').resize(c.size, LZ); c.putalpha(a)
+put('weed', c, ph2('weed_plant_02', 'nor_gl'), 1536, 1792, 256, 256, pad=2)
+put('monstera', draw_monstera(), None, 1536, 1536, 256, 256, pad=3)
 
 
 # --- feuille de bananier (x = base -> pointe, nervure au centre) ---
@@ -308,11 +462,11 @@ def draw_grass():
     W_, H_ = 256 * SS, 512 * SS
     im = Image.new('RGBA', (W_, H_), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    for k in range(26):
+    for k in range(34):
         x0 = r.uniform(0.12, 0.88) * W_
         L = r.uniform(0.55, 0.98) * H_
         bend = r.uniform(-0.35, 0.35) * W_
-        col = lerpc((62, 98, 34), (140, 150, 70), r.random() ** 1.5)
+        col = lerpc((48, 84, 28), (128, 138, 62), r.random() ** 1.6)
         pts_l, pts_r = [], []
         for s in range(13):
             u = s / 12
@@ -324,7 +478,7 @@ def draw_grass():
     return im.resize((256, 512), LZ)
 
 
-put('grass', draw_grass(), None, 1024, 1536, 256, 512)
+put('grass', draw_grass(), None, 1024, 1536, 256, 512, pad=3)
 
 
 # --- fleurs d'hibiscus ---
@@ -344,7 +498,7 @@ def draw_flowers():
     return im.resize((256, 256), LZ)
 
 
-put('flowers', draw_flowers(), None, 1280, 1792, 256, 256)
+put('flowers', draw_flowers(), None, 1792, 1536, 256, 256)
 
 
 # --- noix de coco (opaque) ---
@@ -359,7 +513,7 @@ def draw_coconut():
     return im
 
 
-put_tile('coconut', draw_coconut(), None, 1544, 1544, 240, 240)
+put_tile('coconut', draw_coconut(), None, 1800, 1800, 240, 240)
 
 # --- dilatation des couleurs dans les zones transparentes (évite les franges sombres) ---
 def boxblur(a, r):

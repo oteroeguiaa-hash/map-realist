@@ -7,13 +7,21 @@ const ROOT = new URL('..', import.meta.url).pathname;
 const DIST = path.join(ROOT, 'dist');
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST, { recursive: true });
-const res = await esbuild.build({
-  entryPoints: [path.join(ROOT, 'src/main.js')], bundle: true, format: 'esm', write: false,
-  external: ['three'], minify: !process.argv.includes('--dev'), target: ['es2020', 'safari15'], legalComments: 'none',
-});
-const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-const html = fs.readFileSync(path.join(ROOT, 'index.template.html'), 'utf8').replace('/*BUNDLE*/', () => js);
+const bundle = async (entry) => {
+  const res = await esbuild.build({
+    entryPoints: [path.join(ROOT, entry)], bundle: true, format: 'esm', write: false,
+    external: ['three', 'three/addons/*'], minify: !process.argv.includes('--dev'), target: ['es2022', 'safari15'], legalComments: 'none',
+  });
+  return res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+};
+const js = await bundle('src/main.js');
+const tpl = fs.readFileSync(path.join(ROOT, 'index.template.html'), 'utf8');
+const html = tpl.replace('/*BUNDLE*/', () => js);
 fs.writeFileSync(path.join(DIST, 'index.html'), html);
+// page de contrôle des modèles (tests locaux seulement, jamais publiée)
+const pjs = await bundle('src/preview.js');
+const importmap = tpl.match(/<script type="importmap">[\s\S]*?<\/script>/)[0];
+fs.writeFileSync(path.join(DIST, 'preview.html'), `<!doctype html><meta charset="utf-8"><body style="margin:0">${importmap}<script type="module">${pjs}</script>`);
 const files = [];
 // Les données binaires (.bin) sont publiées en JSON (base64), un format de données standard.
 const copy = (rel) => {
@@ -33,6 +41,7 @@ const copy = (rel) => {
 for (const f of ['world.json', 'terrain.bin', 'clouds.bin']) copy(f);
 for (const f of fs.readdirSync(path.join(ROOT, 'assets/tex'))) if (!/^t_(grass|ash)_n/.test(f)) copy('tex/' + f);
 for (const f of fs.readdirSync(path.join(ROOT, 'assets/mdl'))) copy('mdl/' + f);
+if (fs.existsSync(path.join(ROOT, 'assets/glb'))) for (const f of fs.readdirSync(path.join(ROOT, 'assets/glb'))) copy('glb/' + f);
 const size = files.reduce((a, f) => a + fs.statSync(path.join(DIST, f)).size, 0) + Buffer.byteLength(html);
 fs.writeFileSync(path.join(DIST, 'files.json'), JSON.stringify(files));
 console.log(`page ${(Buffer.byteLength(html) / 1024).toFixed(0)} Ko, ${files.length} fichiers, total ${(size / 1048576).toFixed(1)} Mo`);

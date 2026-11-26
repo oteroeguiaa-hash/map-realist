@@ -1,6 +1,7 @@
 // Rochers scannés, coquillages, bois flotté, ponton, abri, manche à air, avion de brousse et hydravion.
 import * as THREE from 'three';
 import { patchMaterial, loadTex, fetchBuf, mulberry32, clamp, lerp, vnoise, GeoBuilder, mergeGeometries } from './core.js';
+import { floatGeo } from './flora.js';
 
 const V3 = THREE.Vector3;
 
@@ -28,8 +29,8 @@ async function loadModel(base, name, aniso) {
 function stdMat(params, key) { return patchMaterial(new THREE.MeshStandardMaterial(params), { key }); }
 
 export class Props {
-  constructor(scene, terrain, world, atlas) {
-    this.scene = scene; this.T = terrain; this.world = world; this.atlas = atlas;
+  constructor(scene, terrain, world, atlas, bank) {
+    this.scene = scene; this.T = terrain; this.world = world; this.atlas = atlas; this.bank = bank;
     this.colliders = [];
     this.groups = [];
     this.lastCam = new V3(1e9, 0, 0);
@@ -40,10 +41,41 @@ export class Props {
     const models = await Promise.all(names.map((n) => loadModel(base, n, aniso)));
     this.models = {};
     names.forEach((n, i) => { this.models[n] = models[i]; });
+    if (this.bank && this.bank.gltf.rocks) this.useGlbRocks(this.bank.gltf.rocks);
     this.placeScatter();
     this.buildPier();
     this.buildStrip();
     this.buildPlanes();
+  }
+
+  // Rochers calcaires du joueur : chaque rocher devient un modèle instancié (le socle de terrain est écarté)
+  useGlbRocks(gltf) {
+    const scene = gltf.scene;
+    scene.updateMatrixWorld(true);
+    const pieces = [];
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const g = floatGeo(o.geometry);
+      g.applyMatrix4(o.matrixWorld);
+      g.computeBoundingBox();
+      const b = g.boundingBox, sx = b.max.x - b.min.x, sy = b.max.y - b.min.y, sz = b.max.z - b.min.z;
+      if (sy < 0.14 * Math.max(sx, sz)) return; // socle plat
+      pieces.push({ g, mat: o.material, vol: sx * sy * sz });
+    });
+    if (!pieces.length) return;
+    pieces.sort((a, b) => b.vol - a.vol);
+    const assign = { cliff: 0, rock_a: Math.min(1, pieces.length - 1), rock_b: Math.min(2, pieces.length - 1), rock_c: Math.min(3, pieces.length - 1) };
+    for (const [name, k] of Object.entries(assign)) {
+      const ref = this.models[name].size, pc = pieces[k];
+      const g = pc.g.clone();
+      g.computeBoundingBox();
+      const b = g.boundingBox, cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
+      const sc = Math.max(ref[0], ref[2]) / Math.max(b.max.x - b.min.x, b.max.z - b.min.z);
+      g.translate(-cx, -b.min.y, -cz); g.scale(sc, sc, sc);
+      g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+      const bb = g.boundingBox;
+      this.models[name] = { geo: g, map: pc.mat.map, nmap: pc.mat.normalMap, size: [bb.max.x - bb.min.x, bb.max.y, bb.max.z - bb.min.z], glb: true };
+    }
   }
 
   placeScatter() {
@@ -104,7 +136,7 @@ export class Props {
     this.inst = {};
     for (const m of Object.keys(lists)) {
       const md = this.models[m];
-      const mat = stdMat({ map: md.map, normalMap: md.nmap, roughness: m === 'shell' ? 0.45 : 0.92, metalness: 0 }, 'rock_' + m);
+      const mat = stdMat({ map: md.map, normalMap: md.nmap || null, roughness: m === 'shell' ? 0.45 : 0.92, metalness: 0 }, 'rock_' + m);
       const im = new THREE.InstancedMesh(md.geo, mat, Math.max(1, lists[m].length));
       im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, lists[m].length) * 3), 3);
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -188,22 +220,31 @@ export class Props {
 
   buildPlanes() {
     const s = this.world.strip;
-    const bush = makePlane(false);
+    const glbPlane = this.bank && this.bank.has('plane') ? this.bank.instance('plane') : null;
+    const bush = glbPlane || makePlane(false);
     if (s) {
       const ux = Math.sin(s.angle), uz = Math.cos(s.angle);
       const x = s.x - ux * (s.length / 2 - 25), z = s.z - uz * (s.length / 2 - 25);
       bush.position.set(x, this.T.height(x, z), z);
-      bush.rotation.y = s.angle + 0.35;
-      this.colliders.push({ x, z, r: 2.2 }, { x: x + Math.sin(s.angle + 0.35) * -3.2, z: z + Math.cos(s.angle + 0.35) * -3.2, r: 1.2 });
+      const hd = s.angle + 0.35;
+      bush.rotation.y = hd + (glbPlane ? Math.PI : 0); // le modèle du joueur a le nez vers -z
+      const fx = Math.sin(hd), fz = Math.cos(hd);
+      this.colliders.push({ x, z, r: 2.2 }, { x: x - fx * 3.2, z: z - fz * 3.2, r: 1.2 });
+      if (glbPlane) for (const w of [-3.9, -2.6, 2.6, 3.9]) this.colliders.push({ x: x + fz * w + fx * 0.6, z: z - fx * w + fz * 0.6, r: 0.55 });
       this.scene.add(bush);
     }
-    const sea = makePlane(true);
-    const e = this.pierEnd, d = this.pierDir;
-    sea.position.set(e.x - d.x * 9 + d.z * 4.6, 0, e.z - d.z * 9 - d.x * 4.6);
-    sea.rotation.y = Math.atan2(d.x, d.z) + Math.PI;
-    this.scene.add(sea);
-    this.seaplane = sea;
-    this.planes = [bush, sea];
+    this.planes = [bush];
+    if (!glbPlane) {
+      const sea = makePlane(true);
+      const e = this.pierEnd, d = this.pierDir;
+      sea.position.set(e.x - d.x * 9 + d.z * 4.6, 0, e.z - d.z * 9 - d.x * 4.6);
+      sea.rotation.y = Math.atan2(d.x, d.z) + Math.PI;
+      this.scene.add(sea);
+      this.seaplane = sea;
+      this.planes.push(sea);
+    }
+    // matériaux du modèle : ombres, lumière du monde et perspective aérienne
+    if (glbPlane) glbPlane.traverse((o) => { if (o.isMesh) o.material = patchMaterial(o.material, { key: 'plane' + o.material.type }); });
   }
 
   update(camera, dt) {

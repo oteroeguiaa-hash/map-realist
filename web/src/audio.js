@@ -76,7 +76,7 @@ export class Sound {
     this.eng2.frequency.setTargetAtTime(19 + rpm * 60, now, 0.05);
     this.ef.frequency.setTargetAtTime(400 + rpm * 1400, now, 0.08);
     const near = clamp(1 - buggy.pos.distanceTo(p) / 60, 0, 1);
-    this.engG.gain.setTargetAtTime((0.05 + rpm * 0.18) * near, now, 0.1);
+    this.engG.gain.setTargetAtTime((0.05 + rpm * 0.18) * near * (buggy.engineOn ?? 1), now, 0.25);
     // oiseaux le jour, dans la végétation
     this.birdT -= dt;
     const day = sky.hour > 6 && sky.hour < 18.8;

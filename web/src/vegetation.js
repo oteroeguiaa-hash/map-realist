@@ -211,7 +211,7 @@ function makeBroadleaf(A, seed, arch) {
     mango: { h: [3, 5], r: [0.25, 0.4], crownR: [5, 7.5], flat: 0.8, leaf: A.clusterA, csize: [1.6, 2.3], n: 52 },
     breadfruit: { h: [4, 7], r: [0.2, 0.32], crownR: [3.5, 5.5], flat: 0.9, leaf: A.anthurium, csize: [1.6, 2.2], n: 30 },
     banyan: { h: [3.5, 5], r: [0.45, 0.7], crownR: [7, 10], flat: 0.5, leaf: A.clusterA, csize: [1.8, 2.6], n: 64, roots: true },
-    flame: { h: [3.5, 5.5], r: [0.2, 0.3], crownR: [5, 7.5], flat: 0.38, leaf: A.fern, csize: [1.6, 2.2], n: 40, flowers: true },
+    flame: { h: [3.5, 5.5], r: [0.2, 0.3], crownR: [5, 7.5], flat: 0.38, leaf: A.clusterC || A.fern, csize: [1.6, 2.2], n: 40, flowers: true },
     hibiscusT: { h: [1.5, 2.5], r: [0.1, 0.16], crownR: [2.2, 3.2], flat: 0.85, leaf: A.clusterB, csize: [1.0, 1.5], n: 22, flowers: true },
   }[arch];
   const H = lerp(P.h[0], P.h[1], rnd()), R0 = lerp(P.r[0], P.r[1], rnd()), CR = lerp(P.crownR[0], P.crownR[1], rnd());
@@ -399,7 +399,7 @@ function makeBush(A, seed, arch) {
       }
       h = R * 2; r = R; break;
     }
-    case 'sorrel': { const L = 0.25 + rnd() * 0.25; radialCards(b, rnd, 5, sub(A.sorrel, 0, 0, 0.78, 0.7), L, L, 0.05, 0.35, 0.05, 1); h = L * 0.5; r = L; break; }
+    case 'sorrel': { const L = 0.25 + rnd() * 0.25; radialCards(b, rnd, 5, A.sorrel ? sub(A.sorrel, 0, 0, 0.78, 0.7) : A.weed, L, L, 0.05, 0.35, 0.05, 1); h = L * 0.5; r = L; break; }
     case 'seedling': { const p = makePalm(A, seed, true); return { b: p.b, h: p.h, r: 1, kind: 'bush' }; }
     case 'bananaY': { const p = makeBanana(A, seed, 0.45); return { b: p.b, h: p.h, r: 1, kind: 'bush' }; }
   }
@@ -804,4 +804,4 @@ export class Vegetation {
 }
 
 function tick() { return new Promise((r) => setTimeout(r, 0)); }
-export { lerp };
+export { lerp, makePalm, makeBroadleaf, makeTreeFern, makeBanana, makeBush, makePandanus, makeDead, tube, cluster, bentCard, uvr, sub };

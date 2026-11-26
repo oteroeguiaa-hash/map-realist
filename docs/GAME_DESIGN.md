@@ -163,6 +163,7 @@ Des photos réelles d'îles volcaniques tropicales (Polynésie française, Hawa�
 
 ## 12. Le buggy (au point d'apparition)
 
+- Le joueur commence **à pied** ; le buggy est **optionnel**, garé juste devant lui sur la plage : il le prend ou non.
 - Buggy tubulaire tout-terrain de design original (aucune marque réelle).
 - Physique **Chaos Vehicles** : suspensions à grand débattement visibles, poids réaliste, transfert de masse, dérapages dans le sable.
 - Adhérence selon la surface (Physical Materials) : sable sec, sable mouillé, terre, herbe, boue, roche, eau peu profonde.

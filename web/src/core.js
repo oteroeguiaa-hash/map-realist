@@ -64,13 +64,33 @@ float vnoise(vec2 p) {
 
 // Branche les uniformes partagés et injecte : position monde, ombres du relief et des nuages,
 // occlusion sous la canopée, perspective aérienne. Options : wind, leaf, terrainAO.
+const PATCHED = new WeakSet();
 export function patchMaterial(mat, opts = {}) {
+  if (PATCHED.has(mat)) return mat; // déjà adapté (matériau partagé entre plusieurs copies d'un modèle)
+  PATCHED.add(mat);
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     for (const k in U) shader.uniforms[k] = U[k];
     if (opts.uniforms) Object.assign(shader.uniforms, opts.uniforms);
     let vs = shader.vertexShader, fs = shader.fragmentShader;
     vs = vs.replace('#include <common>', '#include <common>\n' + GLSL_COMMON + '\nvarying vec3 vWP;\n' + (opts.vertexPars || ''));
+    if (opts.bend) {
+      // inclinaison par instance (palmiers penchés) : déplacement croissant avec la hauteur, base fixe
+      vs = vs.replace('#include <common>', '#include <common>\nattribute float aLean;\nuniform float uLeanH;\n');
+      vs = vs.replace('#include <begin_vertex>', `#include <begin_vertex>
+        { float hh = clamp(transformed.y / uLeanH, 0.0, 1.2); transformed.x += aLean * hh * hh * uLeanH * 0.33; transformed.y -= abs(aLean) * hh * hh * uLeanH * 0.05; }`);
+    }
+    if (opts.fade) {
+      vs = vs.replace('#include <common>', '#include <common>\nvarying float vInstD;\n');
+      vs = vs.replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        {
+          vec4 io = vec4(0.0, 0.0, 0.0, 1.0);
+          #ifdef USE_INSTANCING
+          io = instanceMatrix * io;
+          #endif
+          vInstD = distance(uCamPos, (modelMatrix * io).xyz);
+        }`);
+    }
     if (opts.wind) {
       vs = vs.replace('#include <common>', '#include <common>\nattribute vec2 aWind;\n');
       vs = vs.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -120,6 +140,21 @@ export function patchMaterial(mat, opts = {}) {
         }
         #endif`);
     }
+    if (opts.fade) {
+      // fondu tramé entre le modèle 3D proche et l'imposteur lointain (aucun « pop »)
+      fs = fs.replace('#include <common>', '#include <common>\nvarying float vInstD;\nuniform vec2 uFade;\n' + GLSL_BAYER);
+      fs = fs.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        if (uFade.y > 0.0) { float ff = 1.0 - smoothstep(uFade.x, uFade.y, vInstD); if (ff < bayer4(gl_FragCoord.xy)) discard; }`);
+    }
+    let afterLights = opts.afterLights || '';
+    if (opts.leaf) {
+      afterLights += `
+        {
+          vec3 vdir = normalize(vWP - uCamPos);
+          float bl = pow(max(dot(vdir, uSunDir), 0.0), 3.0);
+          reflectedLight.directDiffuse += diffuseColor.rgb * gSunDirect * (0.08 + bl * 0.55) * RECIPROCAL_PI * 3.0;
+        }`;
+    }
     if (opts.fragmentMain) fs = fs.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + opts.fragmentMain);
     const canopy = opts.canopy ?? 0.55;
     fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
@@ -127,7 +162,7 @@ export function patchMaterial(mat, opts = {}) {
         float occ = mix(1.0, 1.0 - ${canopy.toFixed(3)}, gCanopy);
         reflectedLight.indirectDiffuse *= occ;
         reflectedLight.indirectSpecular *= occ;
-        ${opts.afterLights || ''}
+        ${afterLights}
       }`);
     fs = fs.replace('#include <opaque_fragment>', `${opts.beforeOutput || ''}
       outgoingLight = applyAerial(outgoingLight, vWP);
@@ -136,9 +171,18 @@ export function patchMaterial(mat, opts = {}) {
     shader.fragmentShader = fs;
     if (prev) prev(shader, renderer);
   };
-  mat.customProgramCacheKey = () => (opts.key || 'p') + (opts.wind ? 'w' : '') + (opts.alphaBoost ? 'a' : '');
+  mat.customProgramCacheKey = () => (opts.key || 'p') + (opts.wind ? 'w' : '') + (opts.alphaBoost ? 'a' : '') + (opts.fade ? 'f' : '') + (opts.bend ? 'b' : '') + (opts.leaf ? 'l' : '');
   return mat;
 }
+
+export const GLSL_BAYER = /* glsl */`
+float bayer4(vec2 p) {
+  ivec2 i = ivec2(mod(p, 4.0));
+  int k = i.x + i.y * 4;
+  float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[k] + 0.5) / 16.0;
+}
+`;
 
 // ---------- Utilitaires ----------
 export function mulberry32(seed) {

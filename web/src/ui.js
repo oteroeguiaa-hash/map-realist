@@ -25,12 +25,14 @@ export class UI {
     }));
     document.querySelectorAll('[data-place]').forEach((b) => b.addEventListener('click', () => { this.onPlace(b.dataset.place); this.openMenu(false); }));
     $('tFps').addEventListener('change', () => { $('fps').hidden = !$('tFps').checked; });
+    $('bCredits').addEventListener('click', () => { this.openMenu(false); $('credits').hidden = false; });
+    $('bCredClose').addEventListener('click', () => { $('credits').hidden = true; });
     $('bPlay').addEventListener('click', () => {
       $('load').classList.add('gone');
       $('hud').hidden = false;
       setTimeout(() => { $('load').hidden = true; }, 700);
       this.onStart();
-      this.toast('Joystick à gauche pour conduire · glisse à droite pour tourner la caméra');
+      this.toast('Joystick à gauche pour marcher · glisse à droite pour regarder · le buggy est devant toi');
     });
   }
   progress(p, msg) {
@@ -54,12 +56,26 @@ export class UI {
     clearTimeout(this.toastT);
     this.toastT = setTimeout(() => t.classList.remove('show'), 3200);
   }
-  hud(buggy, rig, fps) {
+  hud(s) {
     if (!this._n) this._n = 0;
     if (++this._n % 6) return;
-    this.$('spd').textContent = rig.mode === 'drone' ? Math.round(rig.speed * 3.6) : Math.round(Math.abs(buggy.speed) * 3.6);
-    this.$('mode').textContent = rig.mode === 'drone' ? 'Caméra libre' : 'Buggy';
-    this.$('droneBtns').hidden = rig.mode !== 'drone';
-    this.$('fps').textContent = `${Math.round(fps)} i/s`;
+    const set = (id, prop, v) => { const e = this.$(id); if (e[prop] !== v) e[prop] = v; };
+    set('spd', 'textContent', String(Math.round(s.speed * 3.6)));
+    set('mode', 'textContent', s.mode);
+    set('droneBtns', 'hidden', !s.upDown);
+    set('bBrake', 'hidden', !s.inBuggy);
+    set('bJump', 'hidden', s.inBuggy || s.drone);
+    set('bAct', 'hidden', !s.action);
+    if (s.action) set('bAct', 'textContent', s.action);
+    set('bTool', 'hidden', !s.tools);
+    set('fps', 'textContent', `${Math.round(s.fps)} i/s`);
+  }
+  credits(manifest) {
+    const ul = this.$('credList');
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const items = Object.entries(manifest).map(([k, m]) => `<li><b>${esc(m.title || k)}</b> — ${esc(m.author || 'auteur inconnu')} · ${esc(m.license || '')}${m.source ? ` · <a href="${esc(m.source)}" target="_blank" rel="noopener">source</a>` : ''}</li>`);
+    items.push('<li><b>Rochers, falaises, coquillages, bois flotté, textures de sol</b> — Poly Haven · CC0</li>');
+    items.push('<li>Les modèles sous licence « NC » sont réservés à un usage personnel, non commercial.</li>');
+    ul.innerHTML = items.join('');
   }
 }

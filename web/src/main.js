@@ -6,7 +6,10 @@ import { Sky } from './sky.js';
 import { WorldLight } from './lighting.js';
 import { Water } from './water.js';
 import { Post } from './post.js';
-import { Vegetation } from './vegetation.js';
+import { Flora } from './flora.js';
+import { ModelBank } from './models.js';
+import { Player } from './player.js';
+import { Fauna } from './fauna.js';
 import { Grass } from './grass.js';
 import { Props } from './props.js';
 import { Buggy } from './buggy.js';
@@ -25,7 +28,13 @@ const QUALITY = [
   { name: 'Ultra', scale: 1.0, msaa: 4, shadow: 2048, shadowR: 130, sky: 3, terrain: 3, veg: 3 },
 ];
 
+// ordre de chargement des modèles .glb : végétation d'abord, puis rochers, véhicules, outils, animaux
+const GLB_ORDER = ['palm', 'plants', 'monstera', 'jungle', 'rocks', 'buggy', 'plane', 'axe', 'rivelaine',
+  'crab', 'seagull', 'parrot', 'aracari', 'parrots', 'monkey', 'boar', 'tiger', 'jaguar', 'komodo', 'python', 'turtle', 'fishschool', 'shark', 'croc'];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 const G = (window.__game = {
+  mode: 'foot',
   ready: false, autoQ: true, qi: isMobile ? 1 : 2, frame: 0, fpsAvg: 30, scale: 1, paused: false,
 });
 const ui = new UI();
@@ -43,8 +52,18 @@ async function boot() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = true;
     renderer.info.autoReset = false;
+    renderer.localClippingEnabled = true;
     G.renderer = renderer;
     const Q = () => QUALITY[G.qi];
+
+    // modèles 3D : tout part en parallèle tout de suite, sans bloquer le démarrage ;
+    // un modèle trop lent ou cassé est ignoré (version de secours générée) au lieu de bloquer sur un écran noir
+    const manifest = await fetchJSON(`${ASSETS}/glb/manifest.json`).catch(() => ({}));
+    const bank = new ModelBank(ASSETS, manifest);
+    G.bank = bank;
+    bank.loadAll(GLB_ORDER, 60000);
+    const waitModels = (names, ms) => Promise.race([Promise.all(names.filter((k) => manifest[k]).map((k) => bank.load(k))), sleep(ms)]);
+    ui.credits(manifest);
 
     ui.progress(0.08, 'Chargement du relief de l’île…');
     const [world, tbuf, cbuf, atlasRects] = await Promise.all([
@@ -63,6 +82,7 @@ async function boot() {
     G.scene = scene;
     const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 45000);
     G.camera = camera;
+    scene.add(camera); // l'outil tenu en main est attaché à la caméra
 
     ui.progress(0.32, 'Ciel et nuages volumétriques…');
     const sky = new Sky(renderer, cbuf, Q().sky);
@@ -88,10 +108,11 @@ async function boot() {
     const water = new Water(scene, data, world, sky);
     G.water = water;
 
-    ui.progress(0.5, 'Génération des 100 types d’arbres et des 100 types de buissons…');
+    ui.progress(0.5, 'Palmiers, arbres géants et plantes de la jungle…');
+    await waitModels(['palm', 'plants', 'monstera', 'jungle'], 30000);
     await nextFrame();
-    const veg = new Vegetation(renderer, scene, data, world, atlasRects, Q().veg);
-    await veg.init(ASSETS, (p, msg) => ui.progress(0.5 + p * 0.25, msg));
+    const veg = new Flora(renderer, scene, data, world, atlasRects, Q().veg);
+    await veg.init(ASSETS, bank, (p, msg) => ui.progress(0.5 + p * 0.25, msg));
     G.veg = veg;
     wl.setCanopy(veg.canopyList());
 
@@ -99,15 +120,20 @@ async function boot() {
     await nextFrame();
     const grass = new Grass(scene, data, Q().veg);
     G.grass = grass;
-    const props = new Props(scene, data, world, veg.atlas);
+    await waitModels(['rocks', 'plane', 'buggy'], 15000);
+    const props = new Props(scene, data, world, null, bank);
     await props.init(ASSETS);
     G.props = props;
     const sea = new Sea(scene, data, world);
     G.sea = sea;
 
-    ui.progress(0.88, 'Le buggy…');
-    const buggy = new Buggy(scene, data, world, veg, props);
+    ui.progress(0.88, 'Le buggy, ton personnage et les animaux…');
+    const buggy = new Buggy(scene, data, world, veg, props, bank);
     G.buggy = buggy;
+    const player = new Player(scene, camera, data, world, veg, props, bank);
+    G.player = player;
+    const fauna = new Fauna(scene, data, world, veg, bank);
+    G.fauna = fauna;
     const fx = new Effects(scene, data, world);
     G.fx = fx;
     buggy.fx = fx;
@@ -115,6 +141,10 @@ async function boot() {
     const controls = new Controls(canvas, ui);
     const rig = new CameraRig(camera, data);
     G.controls = controls; G.rig = rig;
+    player.onHit = (p, kind) => {
+      if (kind === 'tree') { fx.sand(p, new THREE.Vector3(), 9, 2); ui.toast('Toc !'); }
+      fauna.scare(p, 14);
+    };
     const sound = new Sound();
     G.sound = sound;
 
@@ -137,7 +167,7 @@ async function boot() {
     ui.onHour = (h) => { sky.setHour(h); };
     ui.onWeather = (w) => { sky.setWeather(w); };
     ui.onPlace = (k) => teleport(k);
-    ui.onCamera = () => { rig.cycle(); ui.toast(rig.label()); };
+    ui.onCamera = () => { rig.cycle(G.mode === 'foot'); ui.toast(rig.label()); };
     ui.onReset = () => buggy.reset();
     ui.onStart = () => { sound.start(); requestWakeLock(); };
 
@@ -167,7 +197,8 @@ async function boot() {
       }
       const p = places[k];
       if (!p) return;
-      buggy.place(p[0], p[1], p[2]);
+      if (G.mode === 'buggy') buggy.place(p[0], p[1], p[2]);
+      else { player.place(p[0], p[1], p[2] + Math.PI); if (rig.mode === 'drone') rig.setMode('foot'); }
       if (k === 'cascade') {
         rig.setMode('drone');
         const pool = w.waterfall.pool;
@@ -176,10 +207,45 @@ async function boot() {
         ui.toast('Vue libre sur la cascade — appuie sur Caméra pour revenir au buggy');
         return;
       }
-      if (rig.mode === 'drone') rig.setMode('chase');
+      if (G.mode === 'buggy' && rig.mode === 'drone') rig.setMode('chase');
       rig.snap = true;
     }
     G.teleport = teleport;
+
+    // ---------- à pied / en buggy ----------
+    const dry = (x, z) => data.height(x, z) > 0.35;
+    function enterBuggy() {
+      G.mode = 'buggy';
+      player.vm.visible = false;
+      rig.setMode('chase');
+      ui.toast('En voiture ! Bouton orange pour descendre');
+    }
+    function exitBuggy() {
+      const h = buggy.heading, sx = Math.cos(h), sz = -Math.sin(h);
+      let x = buggy.pos.x + sx * 2, z = buggy.pos.z + sz * 2;
+      if (!dry(x, z)) { x = buggy.pos.x - sx * 2; z = buggy.pos.z - sz * 2; }
+      G.mode = 'foot';
+      player.place(x, z, h + Math.PI);
+      rig.setMode('foot');
+    }
+    function actionLabel() {
+      if (rig.mode === 'drone') return null;
+      if (G.mode === 'buggy') return Math.abs(buggy.speed) < 4 ? 'Descendre' : null;
+      if (player.pos.distanceTo(buggy.pos) < 3.4) return 'Monter dans le buggy';
+      const p = player.nearPickup();
+      if (p) return 'Ramasser ' + p.label;
+      if (player.equipped >= 0) return 'Frapper';
+      return null;
+    }
+    function doAction(label) {
+      if (!label) return;
+      if (label === 'Descendre') exitBuggy();
+      else if (label === 'Monter dans le buggy') enterBuggy();
+      else if (label.startsWith('Ramasser')) { const p = player.nearPickup(); if (p) ui.toast(player.pick(p) + ' · bouton Outil pour changer'); }
+      else if (label === 'Frapper') player.strike();
+    }
+    const buggyCol = [{ x: 0, z: 0, r: 1.05 }, { x: 0, z: 0, r: 1.05 }, { x: 0, z: 0, r: 1.05 }];
+    const IDLE = { throttle: 0, steer: 0, brake: 1 };
 
     function resize(force) {
       const w = window.innerWidth, h = window.innerHeight;
@@ -198,8 +264,19 @@ async function boot() {
     // ---------- état initial ----------
     sky.setHour(ui.hour);
     sky.setWeather(ui.weather);
-    buggy.place(world.spawn.x, world.spawn.z, world.spawn.heading);
+    // le personnage apparaît sur la plage ; le buggy l'attend juste devant, en travers
+    {
+      const sp = world.spawn, h = sp.heading;
+      let bx = sp.x + Math.sin(h) * 8, bz = sp.z + Math.cos(h) * 8;
+      for (let k = 0; k < 12 && !dry(bx, bz); k++) { bx -= Math.sin(h) * 0.8 + Math.cos(h) * 0.6; bz -= Math.cos(h) * 0.8 - Math.sin(h) * 0.6; }
+      buggy.place(bx, bz, h + 1.25);
+      player.place(sp.x, sp.z, h + Math.PI);
+      const putTools = () => { if (!player.toolsDone && bank.has('axe') && bank.has('rivelaine')) { player.toolsDone = true; player.layTools(sp.x, sp.z, h); } };
+      bank.onLoaded(putTools);
+      sleep(20000).then(() => { if (!player.toolsDone) { player.toolsDone = true; player.layTools(sp.x, sp.z, h); } });
+    }
     rig.attach(buggy);
+    rig.setMode('foot');
     rig.snap = true;
 
     ui.progress(0.95, 'Premier rendu…');
@@ -219,9 +296,23 @@ async function boot() {
       const input = controls.read();
       if (input.camera) ui.onCamera();
       if (input.reset) buggy.reset();
-      if (rig.mode !== 'drone') buggy.update(dt, input);
-      else buggy.update(dt, { throttle: 0, steer: 0, brake: 1 });
-      rig.update(dt, input, buggy);
+      const act = actionLabel();
+      if (input.act) doAction(act);
+      if (input.tool && G.mode === 'foot') { const m = player.cycleTool(); if (m) ui.toast(m); }
+      buggy.engineOn = G.mode === 'buggy' ? 1 : 0;
+      if (G.mode === 'buggy') {
+        buggy.update(dt, rig.mode !== 'drone' ? input : IDLE);
+        rig.update(dt, input, buggy);
+      } else {
+        buggy.update(dt, IDLE);
+        if (rig.mode === 'drone') rig.update(dt, input, buggy);
+        else {
+          const f = new THREE.Vector3(0, 0, 1).applyQuaternion(buggy.quat);
+          for (let k = 0; k < 3; k++) { buggyCol[k].x = buggy.pos.x + f.x * (k - 1) * 1.25; buggyCol[k].z = buggy.pos.z + f.z * (k - 1) * 1.25; }
+          player.update(dt, input, buggyCol);
+          rig.target.copy(player.pos);
+        }
+      }
       U.uCamPos.value.copy(camera.position);
       // ciel, lumière
       const sunMoved = sky.update(dt, scene) || sunPrev.distanceToSquared(U.uSunDir.value) > 1e-6;
@@ -258,9 +349,16 @@ async function boot() {
       water.update(camera, sky.weather);
       props.update(camera, dt);
       sea.update(dt, camera);
+      fauna.update(dt, camera, G.mode === 'foot' && rig.mode !== 'drone' ? player.pos : null);
       fx.update(dt, camera, sky);
       sound.update(dt, camera, buggy, data, world, sky);
-      ui.hud(buggy, rig, G.fpsAvg);
+      const drone = rig.mode === 'drone';
+      ui.hud({
+        speed: drone ? rig.speed : G.mode === 'buggy' ? Math.abs(buggy.speed) : player.speed,
+        mode: drone ? 'Caméra libre' : G.mode === 'buggy' ? 'Buggy' : player.swimming ? 'À la nage' : 'À pied',
+        upDown: drone || (G.mode === 'foot' && player.swimming), inBuggy: G.mode === 'buggy' && !drone, drone,
+        action: act, tools: G.mode === 'foot' && !drone && player.inv.length > 0, fps: G.fpsAvg,
+      });
       camera.updateMatrixWorld();
       post.render(scene, camera, U.uTime.value);
       // performance & résolution dynamique
@@ -288,6 +386,7 @@ async function boot() {
     requestAnimationFrame(frame);
   } catch (e) {
     console.error(e);
+    window.__err = e && e.stack;
     ui.error(e && e.message ? e.message : String(e));
   }
 }

@@ -49,18 +49,63 @@ function rimGeometry() {
 }
 
 export class Buggy {
-  constructor(scene, terrain, world, veg, props) {
+  constructor(scene, terrain, world, veg, props, bank) {
     this.T = terrain; this.world = world; this.veg = veg; this.props = props;
+    this.WR = WR;
+    const glb = bank && bank.has('buggy') ? bank.instance('buggy') : null;
+    const layout = glb ? this.glbLayout(glb) : null;
     this.pos = new V3(); this.vel = new V3(); this.quat = new THREE.Quaternion(); this.angVel = new V3();
     this.mass = 720;
     this.Ib = new V3(450, 560, 300); // tangage (x), lacet (y), roulis (z)
     this.steer = 0; this.speed = 0; this.heading = 0; this.rpm = 0;
-    this.wheels = WHEELS.map(([x, z], i) => ({ x, z, front: i < 2, L: LREST, Lprev: LREST, spin: 0, contact: false, load: 0, slip: 0, surface: 0, lastTrack: null, dist: 0 }));
+    this.wheels = (layout ? layout.wheels : WHEELS).map(([x, z], i) => ({ x, z, front: i < 2, L: LREST, Lprev: LREST, spin: 0, contact: false, load: 0, slip: 0, surface: 0, lastTrack: null, dist: 0 }));
     this.safe = { x: world.spawn.x, z: world.spawn.z, h: world.spawn.heading };
     this.safeT = 0; this.deepT = 0;
     this.trunks = [];
-    this.buildModel(scene);
+    if (layout) this.buildGlb(scene, glb, layout); else this.buildModel(scene);
     this.tracks = new Tracks(scene);
+  }
+
+  // Modèle du joueur (apocalyptic_off_road_buggy) : roues = os « VisWheel_* » du squelette
+  glbLayout(glb) {
+    glb.updateMatrixWorld(true);
+    const bones = {};
+    glb.traverse((o) => { const m = /^VisWheel_(FL|FR|RL|RR)(_|$)/.exec(o.name); if (m) bones[m[1]] = o; });
+    if (['FL', 'FR', 'RL', 'RR'].some((k) => !bones[k])) return null;
+    const c = {};
+    for (const k in bones) c[k] = bones[k].getWorldPosition(new V3());
+    // l'avant du modèle doit être +z, la gauche (FL) côté -x… on vérifie et on corrige
+    const yaw = Math.atan2(c.FL.x + c.FR.x - c.RL.x - c.RR.x, c.FL.z + c.FR.z - c.RL.z - c.RR.z);
+    glb.rotation.y -= yaw;
+    glb.updateMatrixWorld(true);
+    for (const k in bones) c[k] = bones[k].getWorldPosition(new V3());
+    const r = (c.FL.y + c.FR.y + c.RL.y + c.RR.y) / 4; // modèle posé au sol : hauteur du moyeu = rayon
+    return { bones, r, wheels: ['FL', 'FR', 'RL', 'RR'].map((k) => [c[k].x, c[k].z]), names: ['FL', 'FR', 'RL', 'RR'] };
+  }
+  buildGlb(scene, glb, L) {
+    this.WR = L.r;
+    const g = new THREE.Group();
+    this.group = g;
+    g.add(glb);
+    glb.position.y = 0.05 - LREST - L.r; // sol du modèle = bas des roues au repos
+    glb.traverse((o) => { if (o.isMesh) { o.material = patchMaterial(o.material, { key: 'bGlb' + o.material.name }); o.castShadow = true; } });
+    g.updateMatrixWorld(true);
+    const gInv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+    this.glbWheels = L.names.map((k, i) => {
+      const b = L.bones[k];
+      const rel = new THREE.Matrix4().multiplyMatrices(gInv, b.matrixWorld);
+      const relP = new THREE.Matrix4().multiplyMatrices(gInv, b.parent.matrixWorld);
+      const qb = new THREE.Quaternion(); rel.decompose(new V3(), qb, new V3());
+      const qInv = qb.clone().invert();
+      return {
+        bone: b, rest: b.quaternion.clone(), restP: b.position.clone(),
+        axis: new V3(1, 0, 0).applyQuaternion(qInv).normalize(), up: new V3(0, 1, 0).applyQuaternion(qInv).normalize(),
+        toParent: new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().copy(relP).invert()),
+        y0: new V3().setFromMatrixPosition(rel).y, i,
+      };
+    });
+    this._qa = new THREE.Quaternion(); this._qb = new THREE.Quaternion(); this._dv = new V3();
+    scene.add(g);
   }
 
   buildModel(scene) {
@@ -227,7 +272,7 @@ export class Buggy {
       const a = new V3(w.x, 0.05, w.z).applyMatrix3(R).add(this.pos);
       const g = T.height(a.x, a.z);
       const cosT = Math.max(up.y, 0.3);
-      const dist = (a.y - g - WR) / cosT;
+      const dist = (a.y - g - this.WR) / cosT;
       let L = clamp(dist, 0.03, LMAX);
       w.contact = dist < LMAX;
       w.Lprev = w.L; w.L = w.contact ? L : Math.min(LMAX, w.L + h * 2.5);
@@ -326,12 +371,25 @@ export class Buggy {
     g.quaternion.copy(this.quat);
     const f = new V3(0, 0, 1).applyQuaternion(this.quat);
     this.heading = Math.atan2(f.x, f.z);
+    if (this.glbWheels) {
+      for (const o of this.glbWheels) {
+        const w = this.wheels[o.i];
+        const ang = (w.contact ? (w.vlong || 0) : this.speed) / this.WR;
+        w.spin += ang * dt;
+        this._qa.setFromAxisAngle(o.up, w.front ? this.steer : 0);
+        this._qb.setFromAxisAngle(o.axis, w.spin);
+        o.bone.quaternion.copy(o.rest).multiply(this._qa).multiply(this._qb);
+        this._dv.set(0, (0.05 - w.L) - o.y0, 0).applyMatrix3(o.toParent);
+        o.bone.position.copy(o.restP).add(this._dv);
+      }
+      return;
+    }
     for (let i = 0; i < 4; i++) {
       const w = this.wheels[i], o = this.wheelObjs[i];
       const y = 0.05 - w.L;
       o.pivot.position.set(w.x, y, w.z);
       o.pivot.rotation.y = w.front ? this.steer : 0;
-      const ang = (w.contact ? (w.vlong || 0) : this.speed) / WR;
+      const ang = (w.contact ? (w.vlong || 0) : this.speed) / this.WR;
       w.spin += ang * dt;
       o.spin.rotation.x = w.spin;
       const side = Math.sign(w.x);

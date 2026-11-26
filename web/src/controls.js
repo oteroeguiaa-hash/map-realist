@@ -13,6 +13,9 @@ export class Controls {
       this.keys.add(e.code);
       if (e.code === 'KeyC') this.cam = true;
       if (e.code === 'KeyR') this.reset = true;
+      if (e.code === 'KeyF' || e.code === 'Enter') this.act = true;
+      if (e.code === 'KeyT') this.tool = true;
+      if (e.code === 'Space') this.jumpK = true;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
@@ -43,7 +46,9 @@ export class Controls {
       const off = () => { this[key] = false; };
       el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('lostpointercapture', off);
     };
-    hold('bBrake', 'brake'); hold('bUp', 'up'); hold('bDown', 'down');
+    hold('bBrake', 'brake'); hold('bUp', 'up'); hold('bDown', 'down'); hold('bJump', 'jumpB');
+    const tap = (id, key) => document.getElementById(id).addEventListener('pointerdown', (e) => { e.preventDefault(); this[key] = true; });
+    tap('bAct', 'act'); tap('bTool', 'tool'); tap('bJump', 'jumpK');
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('touchmove', (e) => { if (e.target === canvas || e.target.closest('#hud')) e.preventDefault(); }, { passive: false });
   }
@@ -59,14 +64,15 @@ export class Controls {
       lookX: this.look.dx, lookY: this.look.dy,
       up: this.up || k.has('KeyE') || k.has('PageUp'), down: this.down || k.has('KeyQ') || k.has('PageDown'),
       camera: this.cam, reset: this.reset, fast: k.has('ShiftLeft') || k.has('ShiftRight'),
+      jump: this.jumpK || this.jumpB || k.has('Space'), act: this.act, tool: this.tool, analog: this.stick.id !== null,
     };
-    this.look.dx = this.look.dy = 0; this.cam = this.reset = false;
+    this.look.dx = this.look.dy = 0; this.cam = this.reset = this.act = this.tool = this.jumpK = false;
     return out;
   }
 }
 
 const MODES = ['chase', 'hood', 'drone'];
-const LABELS = { chase: 'Caméra : poursuite', hood: 'Caméra : pilote', drone: 'Caméra libre (vol)' };
+const LABELS = { chase: 'Caméra : poursuite', hood: 'Caméra : pilote', drone: 'Caméra libre (vol)', foot: 'Vue à pied' };
 
 export class CameraRig {
   constructor(camera, terrain) {
@@ -80,7 +86,10 @@ export class CameraRig {
     this.smoothYaw = 0;
   }
   attach(buggy) { this.buggy = buggy; }
-  cycle() { this.setMode(MODES[(MODES.indexOf(this.mode) + 1) % MODES.length]); }
+  cycle(onFoot) {
+    if (onFoot) { this.setMode(this.mode === 'drone' ? 'foot' : 'drone'); return; }
+    this.setMode(MODES[(MODES.indexOf(this.mode) + 1) % MODES.length]);
+  }
   setMode(m) {
     if (m === 'drone' && this.mode !== 'drone') {
       const e = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');

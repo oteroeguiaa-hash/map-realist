@@ -6,8 +6,12 @@
     "build": "node tools/build.mjs"
   },
   "dependencies": {
+    "@gltf-transform/core": "^4.1.1",
+    "@gltf-transform/extensions": "^4.1.1",
+    "@gltf-transform/functions": "^4.1.1",
     "esbuild": "^0.24.0",
     "meshoptimizer": "^0.22.0",
+    "sharp": "^0.33.5",
     "three": "^0.170.0"
   }
 }

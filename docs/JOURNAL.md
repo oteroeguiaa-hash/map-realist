@@ -18,3 +18,13 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Textures et objets scannés gratuits (Poly Haven, CC0).
 - Testé dans Chromium (rendu logiciel) : chargement sans erreur. Fluidité sur iPhone à vérifier par le joueur (résolution adaptée automatiquement).
 - **Prochaine étape :** retours du joueur sur la démo ; installation d'Unreal pour la version complète.
+
+## 26/11/2026 — Démo web : modèles 3D du joueur, personnage à pied, faune
+
+- Les 24 modèles .glb du dépôt `ile-3d` remplacent les objets générés : palmiers, plantes de jungle, monstera, troncs géants, rochers, buggy, avion, hache, rivelaine et 15 espèces d'animaux.
+- Ils sont allégés de 150 Mo à 12,5 Mo (textures WebP, maillages simplifiés, compression meshopt) et chargés en parallèle ; un modèle trop lent est ignoré (version générée de secours), donc jamais d'écran noir.
+- Nouveau : personnage à pied en vue subjective (marche, course, saut, nage, plongée), buggy optionnel garé devant soi, hache et rivelaine à ramasser sur la plage, frappe sur les arbres.
+- Animaux : patrouilles au sol (tigre, jaguar, sanglier, varan, python, singe, crabe), crocodile dans le bassin de la cascade, tortue, banc de poissons et requin dans l'eau, mouettes en vol, perroquets et aracari perchés dans les palmiers. Ils fuient quand on s'approche.
+- Panneau « Crédits des modèles 3D » (obligatoire pour les licences CC-BY).
+- Mesures (Chromium, rendu logiciel, qualité Moyen) : 1,1 M triangles à la plage, 1,45 M dans la jungle la plus dense (ombres comprises), 120 à 200 appels de dessin. Fluidité réelle sur iPhone à vérifier par le joueur.
+- **Prochaine étape :** retours du joueur sur iPhone ; brume et rayons de soleil dans la jungle.
