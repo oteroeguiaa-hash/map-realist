@@ -432,7 +432,8 @@ async function boot() {
     // compile tous les shaders pendant l'écran de chargement (sinon le jeu saccade au début)
     ui.progress(0.95, 'Préparation des effets graphiques…');
     camp.group && (camp.group.visible = true);
-    try { await renderer.compileAsync(scene, camera); } catch (e) { console.warn('compilation anticipée :', e && e.message); }
+    // jamais plus de 8 s : si le navigateur traîne, on lance le jeu quand même
+    try { await Promise.race([renderer.compileAsync(scene, camera), sleep(8000)]); } catch (e) { console.warn('compilation anticipée :', e && e.message); }
     // premier rendu complet (compile les shaders)
     const clock = new THREE.Clock();
     let last = performance.now(), sunPrev = new THREE.Vector3(), ftAcc = 0, ftN = 0, qTimer = 0;
