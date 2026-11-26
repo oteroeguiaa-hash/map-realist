@@ -79,7 +79,7 @@ export class UI {
     const ul = this.$('credList');
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
     const items = Object.entries(manifest).map(([k, m]) => `<li><b>${esc(m.title || k)}</b> — ${esc(m.author || 'auteur inconnu')} · ${esc(m.license || '')}${m.source ? ` · <a href="${esc(m.source)}" target="_blank" rel="noopener">source</a>` : ''}</li>`);
-    items.push('<li><b>Rochers, falaises, coquillages, bois flotté, textures de sol</b> — Poly Haven · CC0</li>');
+    items.push('<li><b>Textures de sol, éclairage « stream », textures des falaises</b> — Poly Haven · CC0</li>');
     items.push('<li>Les modèles sous licence « NC » sont réservés à un usage personnel, non commercial.</li>');
     ul.innerHTML = items.join('');
   }

@@ -42,3 +42,11 @@ Attention aux licences : **CC-BY** demande de citer l'auteur (fait dans le menu 
 | `aracari_a_collier.glb` — Araçari à collier | Tavernier Amaury (https://sketchfab.com/svtavernier) (Sketchfab) | CC-BY-NC-SA-4.0 | gratuit | dépôt `ile-3d` du joueur → `web/assets/glb/aracari.data.json` (généré, non versionné) | animal |
 | `parrots_of_the_caribbean.glb` — Parrots of the Caribbean | Eleni Kofekidou (https://sketchfab.com/EleniKofekidou) (Sketchfab) | CC-BY-NC-4.0 | gratuit | dépôt `ile-3d` du joueur → `web/assets/glb/parrots.data.json` (généré, non versionné) | animal |
 | `seagull.glb` — Seagull | kenchoo (https://sketchfab.com/kenchoo) (Sketchfab) | CC-BY-NC-SA-4.0 | gratuit | dépôt `ile-3d` du joueur → `web/assets/glb/seagull.data.json` (généré, non versionné) | animal |
+
+## Nouveau décor Poly Haven (fourni par le joueur dans `ile-3d`, CC0)
+
+Fichiers `.gltf.zip` convertis par `node web/tools/prep_glb.mjs <dossier ile-3d>` (non versionnés) : boulder_01, dead_tree_trunk_02, fern_02, grass_medium_01, mountainside, namaqualand_boulder_02, namaqualand_boulder_05, namaqualand_cliff_01, othonna_cerarioides, rock_face_02, rock_moss_set_02, root_cluster_01, sand_rocks_small_01. Les .jpg fournis n'ont pas de canal alpha : le script récupère le masque alpha d'origine sur Poly Haven (même asset) pour fern_02, grass_medium_01 et othonna_cerarioides.
+
+Éclairage : `stream_2k.exr` réduit en 1k par `node web/tools/prep_hdri.mjs` → `web/assets/hdri/stream_1k.exr`. Textures du sol : falaises = rock_face_02, haut du volcan = mountainside.
+
+Retirés : anciens rochers, falaise, coquillages, bois flotté Poly Haven (`web/assets/mdl`), rochers calcaires, monstera, bananiers et fougères du pack de plantes, photo HDR rainforest_trail.

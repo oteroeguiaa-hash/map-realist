@@ -45,3 +45,6 @@ web/tools/.atlas*
 
 # Copies allégées des modèles 3D du joueur (régénérées depuis le dépôt ile-3d, licences tierces)
 web/assets/glb/
+
+# Carte d'éclairage réduite (régénérée par web/tools/prep_hdri.mjs depuis ile-3d)
+web/assets/hdri/*.exr

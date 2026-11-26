@@ -7,7 +7,7 @@ import { makeBroadleaf, makeTreeFern, makePalm, makeBush, makeDead, tube, cluste
 const V3 = THREE.Vector3;
 const QUAL = [
   { tree: 45, bush: 16, shadow: 26, impBush: 110, density: 0.7 },
-  { tree: 58, bush: 19, shadow: 34, impBush: 150, density: 0.85 },
+  { tree: 58, bush: 17, shadow: 28, impBush: 150, density: 0.85 },
   { tree: 90, bush: 32, shadow: 65, impBush: 200, density: 1.0 },
   { tree: 120, bush: 42, shadow: 85, impBush: 260, density: 1.0 },
 ];
@@ -75,7 +75,7 @@ function glbParts(obj, height, cat, opts = {}) {
     const H = height;
     const pos = p.geo.attributes.position, n = pos.count, w = new Float32Array(n * 2);
     const ph = Math.random();
-    for (let i = 0; i < n; i++) { const t = clamp(pos.getY(i) / H, 0, 1); w[i * 2] = Math.pow(t, 1.6); w[i * 2 + 1] = ph + pos.getX(i) * 0.05; }
+    for (let i = 0; i < n; i++) { const t = clamp(pos.getY(i) / H, 0, 1); w[i * 2] = opts.still ? 0 : Math.pow(t, 1.6); w[i * 2 + 1] = ph + pos.getX(i) * 0.05; }
     p.geo.setAttribute('aWind', new THREE.BufferAttribute(w, 2));
     if (!p.geo.attributes.normal) p.geo.computeVertexNormals();
     p.geo.computeBoundingBox(); p.geo.computeBoundingSphere();
@@ -213,22 +213,29 @@ export class Flora {
         pack.updateMatrixWorld(true);
         for (const m of meshes) { const c = m.clone(); c.matrixAutoUpdate = false; c.matrix.copy(m.matrixWorld); g.add(c); }
         const kind = /Palm/i.test(key) ? 'ppalm' : /Banana/i.test(key) ? 'gbanana' : /Fern/i.test(key) ? 'gfern' : 'gmonst';
+        if (kind !== 'ppalm') continue; // seuls les arbres de l'ancien décor sont gardés
         const hgt = kind === 'ppalm' ? 4.2 : kind === 'gbanana' ? 3.0 : kind === 'gfern' ? 1.1 : 1.3;
         const cat = kind === 'ppalm' ? 'tree' : 'bush';
         const p = glbParts(g, hgt, cat, { maxTris: cat === 'bush' ? 1300 : 2600, thicken: kind === 'ppalm' ? 1.4 : 0 });
         if (p) reg(kind, add({ cat, name: key, parts: p.parts, h: p.h, trunkR: 0.12, crownR: p.r }));
       }
     }
-    const monst = glb('monstera');
-    if (monst) {
-      monst.updateMatrixWorld(true);
-      monst.traverse((o) => {
-        if (!o.isMesh) return;
+    // nouveau sous-bois (Poly Haven, tailles réelles) : fougères, touffes d'herbe, othonna, racines
+    const realParts = (scene, filter, k, kind, opts = {}) => {
+      if (!scene) return;
+      scene.updateMatrixWorld(true);
+      scene.traverse((o) => {
+        if (!o.isMesh || (filter && !filter(o.name))) return;
         const g = new THREE.Group(); const c = o.clone(); c.matrixAutoUpdate = false; c.matrix.copy(o.matrixWorld); g.add(c);
-        const p = glbParts(g, 1.15, 'bush');
-        if (p) reg('gmonst', add({ cat: 'bush', name: 'monstera', parts: p.parts, h: p.h, crownR: p.r }));
+        const bb = new THREE.Box3().setFromObject(c);
+        const p = glbParts(g, (bb.max.y - bb.min.y) * k, 'bush', opts);
+        if (p) reg(kind, add({ cat: 'bush', name: kind, parts: p.parts, h: p.h, crownR: p.r }));
       });
-    }
+    };
+    realParts(glb('fern2'), null, 3.2, 'fern', { maxTris: 1200 });
+    realParts(glb('grass2'), (n) => /(mid|large|tall)/.test(n), 3.0, 'grass', { maxTris: 900 });
+    realParts(glb('othonna'), null, 1.0, 'othonna', { maxTris: 1600 });
+    realParts(glb('roots'), null, 1.0, 'roots', { still: true });
     progress(0.3, 'Grands arbres de la jungle…');
     // --- grand tronc scanné + couronne de vraies feuilles ---
     const jungle = glb('jungle');
@@ -257,9 +264,6 @@ export class Flora {
     let seed = 3000;
     if (!this.arch.giant) for (const a of ['mango', 'almond', 'banyan']) { const t = makeBroadleaf(A, seed += 71, a); reg('giant', add({ cat: 'tree', name: a, parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
     if (!this.arch.palm) for (let k = 0; k < 4; k++) { const t = makePalm(A, 1000 + k * 77, false); reg('palm', add({ cat: 'tree', name: 'palmier', parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
-    if (!this.arch.gfern) for (let k = 0; k < 3; k++) { const t = makeBush(A, seed += 71, 'fern'); reg('gfern', add({ cat: 'bush', name: 'fougère', parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r })); }
-    if (!this.arch.gmonst) for (let k = 0; k < 3; k++) { const t = makeBush(A, seed += 71, 'anthurium'); reg('gmonst', add({ cat: 'bush', name: 'anthurium', parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r })); }
-    if (!this.arch.gbanana) for (let k = 0; k < 2; k++) { const t = makeBush(A, seed += 71, 'bananaY'); reg('gbanana', add({ cat: 'bush', name: 'bananier', parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r })); }
     if (!this.arch.ppalm) for (let k = 0; k < 3; k++) { const t = makePalm(A, 1500 + k * 77, true); reg('ppalm', add({ cat: 'tree', name: 'jeune palmier', parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
     progress(0.55, 'Placement de la végétation sur l’île…');
     await tick();
@@ -325,11 +329,11 @@ export class Flora {
       const beach = 1.7 + vnoise(x * 0.045, z * 0.045) * 1.3;
       let p, list;
       if (h < beach) continue; // plage nette : pas de touffes plantées dans le sable
-      if (h < 10) { p = 0.5 * (0.7 + nz * 0.6); list = [['gfern', 1.5], ['gmonst', 1.2], ['gbanana', 0.7]]; }
-      else if (h < 190) { p = 0.8 * (0.65 + nz * 0.6); list = [['gfern', 4.5], ['gmonst', 3.2], ['gbanana', wet > 0.05 ? 2.5 : 1.0]]; }
-      else { p = 0.2; list = [['gfern', 1]]; }
-      if (clear > 0.3) p *= 0.12;
-      if (edge && h > beach + 0.3) { p = 1.2; list = [['gbanana', 2], ['gmonst', 2.5], ['gfern', 3]]; }
+      if (h < 10) { p = 0.75 * (0.7 + nz * 0.6); list = [['grass', 3], ['othonna', 0.8], ['fern', 1.2]]; }
+      else if (h < 190) { p = 0.98 * (0.7 + nz * 0.5); list = [['fern', 6], ['grass', 2], ['roots', wet > 0.05 ? 0.5 : 0.18], ['othonna', 0.15]]; }
+      else { p = 0.4; list = [['othonna', 2], ['grass', 2]]; }
+      if (clear > 0.3) { p = 0.85; list = [['grass', 4], ['fern', 0.5]]; }
+      if (edge && h > beach + 0.3) { p = 1.2; list = [['fern', 3], ['grass', 2]]; }
       if (wet > 0.75) p *= 0.3;
       if (slope > 0.55) p *= 0.3;
       if (rnd() > p * this.q.density) continue;

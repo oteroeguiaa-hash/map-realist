@@ -9,6 +9,8 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, prune, weld, simplify, textureCompress, metalRough, join, resample, meshopt } from '@gltf-transform/functions';
 import { MeshoptSimplifier, MeshoptEncoder } from 'meshoptimizer';
 import sharp from 'sharp';
+import { execFileSync } from 'node:child_process';
+import os from 'node:os';
 
 const SRC = process.argv[2];
 const OUT = new URL('../assets/glb/', import.meta.url).pathname;
@@ -42,7 +44,39 @@ const MODELS = {
   aracari: { src: 'aracari_a_collier.glb', tex: 512, tris: 6000, kind: 'animal' },
   parrots: { src: 'parrots_of_the_caribbean.glb', tex: 512, kind: 'animal' },
   seagull: { src: 'seagull.glb', tex: 512, kind: 'animal' },
+  // décor Poly Haven (CC0) fourni en .gltf.zip ; tailles réelles en mètres
+  boulder: { zip: 'boulder_01_2k.gltf.zip', tex: 1024, tris: 1600, err: 0.02, sloppy: true, kind: 'decor' },
+  trunk2: { zip: 'dead_tree_trunk_02_2k.gltf.zip', tex: 1024, tris: 1600, err: 0.02, kind: 'decor' },
+  fern2: { zip: 'fern_02_4k.gltf.zip', tex: 1024, tris: 3600, err: 0.01, kind: 'veg', alpha: 'fern_02' },
+  grass2: { zip: 'grass_medium_01_4k.gltf.zip', tex: 1024, tris: 7000, err: 0.01, kind: 'veg', alpha: 'grass_medium_01' },
+  mountain: { zip: 'mountainside_2k.gltf.zip', tex: 1024, tris: 3500, err: 0.02, kind: 'decor' },
+  nboulder2: { zip: 'namaqualand_boulder_02_2k.gltf.zip', tex: 1024, tris: 1600, err: 0.02, kind: 'decor' },
+  nboulder5: { zip: 'namaqualand_boulder_05_2k.gltf.zip', tex: 1024, tris: 1400, err: 0.02, kind: 'decor' },
+  ncliff: { zip: 'namaqualand_cliff_01_2k.gltf.zip', tex: 1024, tris: 3000, err: 0.02, kind: 'decor' },
+  othonna: { zip: 'othonna_cerarioides_2k.gltf.zip', tex: 1024, tris: 7000, err: 0.04, kind: 'veg', alpha: 'othonna_cerarioides' },
+  rockface: { zip: 'rock_face_02_2k.gltf.zip', tex: 1024, tris: 1800, err: 0.02, kind: 'decor' },
+  mossrocks: { zip: 'rock_moss_set_02_4k.gltf.zip', tex: 1024, tris: 6000, err: 0.02, kind: 'decor' },
+  roots: { zip: 'root_cluster_01_2k.gltf.zip', tex: 1024, tris: 3500, err: 0.02, kind: 'decor' },
+  sandrocks: { zip: 'sand_rocks_small_01_1k.gltf.zip', tex: 1024, tris: 4000, err: 0.03, kind: 'decor' },
 };
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'prepglb-'));
+// .gltf.zip -> dossier temporaire, renvoie le chemin du .gltf
+function unzipGltf(zip) {
+  const d = path.join(TMP, zip.replace(/\.gltf\.zip$/, ''));
+  fs.mkdirSync(d, { recursive: true });
+  execFileSync('unzip', ['-oq', path.join(SRC, zip), '-d', d]);
+  const f = fs.readdirSync(d).find((x) => x.endsWith('.gltf'));
+  return path.join(d, f);
+}
+// les .jpg Poly Haven n'ont pas de canal alpha : on récupère le masque d'origine (même asset, CC0)
+function alphaMask(id) {
+  const f = path.join(TMP, `alpha_${id}.jpg`);
+  if (!fs.existsSync(f)) {
+    const info = JSON.parse(execFileSync('curl', ['-s', `https://api.polyhaven.com/files/${id}`]).toString());
+    execFileSync('curl', ['-s', '-o', f, info.Alpha['2k'].jpg.url]);
+  }
+  return f;
+}
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'sharp': sharp, 'meshopt.encoder': MeshoptEncoder });
 // option : node tools/prep_glb.mjs <dossier> palm,rocks  → ne refait que ces modèles
@@ -52,7 +86,8 @@ const manifest = ONLY && fs.existsSync(MF) ? JSON.parse(fs.readFileSync(MF, 'utf
 let total = 0;
 for (const [name, cfg] of Object.entries(MODELS)) {
   if (ONLY && !ONLY.includes(name)) continue;
-  const file = path.join(SRC, cfg.src);
+  if (cfg.zip && !fs.existsSync(path.join(SRC, cfg.zip))) { console.log('absent :', cfg.zip); continue; }
+  const file = cfg.zip ? unzipGltf(cfg.zip) : path.join(SRC, cfg.src);
   if (!fs.existsSync(file)) { console.log('absent :', cfg.src); continue; }
   const doc = await io.read(file);
   const root = doc.getRoot();
@@ -74,6 +109,22 @@ for (const [name, cfg] of Object.entries(MODELS)) {
       } catch (e) { /* image illisible : on garde */ }
     }
   }
+  if (cfg.alpha) {
+    // couleur + masque alpha -> PNG RGBA, matériaux en découpe nette
+    const mask = await sharp(alphaMask(cfg.alpha)).greyscale().toBuffer();
+    for (const m of root.listMaterials()) {
+      const t = m.getBaseColorTexture();
+      if (!t || m.getAlphaMode() === 'OPAQUE') continue;
+      const img = sharp(Buffer.from(t.getImage()));
+      const { width, height } = await img.metadata();
+      const a = await sharp(mask).resize(width, height).toColourspace('b-w').raw().toBuffer();
+      const rgb = await img.removeAlpha().raw().toBuffer();
+      const rgba = Buffer.alloc(width * height * 4);
+      for (let i = 0; i < width * height; i++) { rgba[i * 4] = rgb[i * 3]; rgba[i * 4 + 1] = rgb[i * 3 + 1]; rgba[i * 4 + 2] = rgb[i * 3 + 2]; rgba[i * 4 + 3] = a[i]; }
+      t.setImage(new Uint8Array(await sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer())).setMimeType('image/png');
+      m.setAlphaMode('MASK'); m.setAlphaCutoff(0.5);
+    }
+  }
   await doc.transform(dedup(), prune());
   if (cfg.join) await doc.transform(join({ keepNamed: false }));
   // simplification des maillages
@@ -87,11 +138,43 @@ for (const [name, cfg] of Object.entries(MODELS)) {
       // les petits maillages ne doivent pas disparaître : rien en dessous de minTris (déjà géré par l'erreur max)
     }
   }
+  // maillages scannés avec coutures d'UV partout : on soude les sommets par position (en ignorant les UV)
+  // pour que le simplificateur puisse travailler ; chaque sommet garde les attributs de son représentant
+  if (cfg.sloppy && countTris() > cfg.tris * 1.5) {
+    for (const mesh of root.listMeshes()) for (const prim of mesh.listPrimitives()) {
+      const idx = prim.getIndices(), pos = prim.getAttribute('POSITION');
+      if (!idx) continue;
+      const P = pos.getArray(), n = pos.getCount(), map = new Map(), rep = new Uint32Array(n);
+      for (let i = 0; i < n; i++) { const k = `${P[i * 3].toFixed(4)},${P[i * 3 + 1].toFixed(4)},${P[i * 3 + 2].toFixed(4)}`; let v = map.get(k); if (v === undefined) { v = i; map.set(k, i); } rep[i] = v; }
+      const I = new Uint32Array(idx.getArray()).map((v) => rep[v]);
+      const target = Math.floor(cfg.tris * (idx.getCount() / 3) / Math.max(1, countTris())) * 3;
+      let [out] = MeshoptSimplifier.simplify(I, new Float32Array(P), 3, Math.max(target, 300), 1.0, []);
+      if (out.length / 3 > target * 1.5) {
+        // dernier recours : regroupement des sommets sur une grille (la carte de normales garde le détail)
+        let mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+        for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) { mn[c] = Math.min(mn[c], P[i * 3 + c]); mx[c] = Math.max(mx[c], P[i * 3 + c]); }
+        const cell = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) / Math.sqrt(target / 9), cmap = new Map(), crep = new Uint32Array(n);
+        for (let i = 0; i < n; i++) { const k = [0, 1, 2].map((c) => Math.floor((P[i * 3 + c] - mn[c]) / cell)).join(','); let v = cmap.get(k); if (v === undefined) { v = i; cmap.set(k, i); } crep[i] = v; }
+        const res = [], seen = new Set();
+        for (let t = 0; t < out.length; t += 3) {
+          const a = crep[out[t]], b = crep[out[t + 1]], c = crep[out[t + 2]];
+          if (a === b || b === c || a === c) continue;
+          const key = [a, b, c].sort((x, y) => x - y).join(',');
+          if (seen.has(key)) continue; seen.add(key); res.push(a, b, c);
+        }
+        out = res;
+      }
+      idx.setArray(new Uint32Array(out));
+    }
+    await doc.transform(prune());
+  }
   after = countTris();
   // textures : WebP, taille maximale
   // feuilles : la couleur des pixels transparents est étendue depuis la feuille voisine,
   // sinon le filtrage de texture fait apparaître un liseré noir autour de chaque feuille
   if (cfg.kind === 'veg') await bleedAlpha(root, cfg.tex);
+  // licence des modèles Poly Haven (pas de métadonnées dans leurs .gltf)
+  if (cfg.zip && !extras.license) { extras.license = 'CC0 (domaine public)'; extras.author = 'Poly Haven'; extras.title = cfg.zip.replace(/_\dk\.gltf\.zip$/, ''); extras.source = 'https://polyhaven.com/a/' + extras.title; }
   await doc.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [cfg.tex, cfg.tex], quality: 82 }));
   if (root.listAnimations().length) await doc.transform(resample({ tolerance: 1e-4 }));
   await doc.transform(prune());

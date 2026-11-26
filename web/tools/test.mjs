@@ -33,7 +33,7 @@ await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/**', (
 });
 if (process.argv[2] === 'preview') {
   for (const v of ['front', 'side', 'top']) {
-    await page.goto(`http://localhost:8765/preview.html?v=${v}`, { waitUntil: 'load' });
+    await page.goto(`http://localhost:8765/preview.html?v=${v}${process.env.M ? '&m=' + process.env.M : ''}`, { waitUntil: 'load' });
     await page.waitForFunction(() => window.__preview && window.__preview.ready, null, { timeout: 300000, polling: 500 });
     await page.screenshot({ path: path.join(OUT, `preview_${v}.png`) });
   }

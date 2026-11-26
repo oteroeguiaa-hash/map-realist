@@ -18,7 +18,7 @@ import { Builder, PIECES } from './build.js';
 const SAVE_KEY = 'mapRealist.save.v1';
 const loadSave = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } };
 const writeSave = (o) => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* stockage indisponible */ } };
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
 import { Props } from './props.js';
 import { Buggy } from './buggy.js';
 import { Effects } from './fx.js';
@@ -37,7 +37,8 @@ const QUALITY = [
 ];
 
 // ordre de chargement des modèles .glb : végétation d'abord, puis rochers, véhicules, outils, animaux
-const GLB_ORDER = ['palm', 'plants', 'monstera', 'jungle', 'rocks', 'buggy', 'plane', 'axe', 'rivelaine',
+const GLB_ORDER = ['palm', 'plants', 'jungle', 'fern2', 'grass2', 'othonna', 'roots',
+  'boulder', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'buggy', 'plane', 'axe', 'rivelaine',
   'crab', 'seagull', 'parrot', 'aracari', 'parrots', 'monkey', 'boar', 'tiger', 'jaguar', 'komodo', 'python', 'turtle', 'fishschool', 'shark', 'croc'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -118,18 +119,25 @@ async function boot() {
     const hemi = new THREE.HemisphereLight(0x87ceeb, 0x6b5e45, 1.3);
     scene.add(hemi);
     const GOLD = new THREE.Color(0xfff2d6);
-    // éclairage d'environnement : photo HDR « Rainforest Trail » (Poly Haven) le jour
+    // éclairage d'environnement : HDRI « stream » (Poly Haven) lue avec EXRLoader
     let hdri = null;
     const pmrem = new THREE.PMREMGenerator(renderer);
-    fetchBuf(`${ASSETS}/hdri/rainforest_trail_1k.data.json`).then((buf) => {
-      const d = new RGBELoader().parse(buf);
+    fetchBuf(`${ASSETS}/hdri/stream_1k.data.json`).then((buf) => {
+      const d = new EXRLoader().setDataType(THREE.HalfFloatType).parse(buf);
       const tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
       tex.colorSpace = THREE.LinearSRGBColorSpace; tex.mapping = THREE.EquirectangularReflectionMapping;
       tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
-      let sum = 0, n = 0;
+      // luminosité moyenne (sans le disque solaire) et direction du soleil de la photo
       const h2f = d.type === THREE.HalfFloatType ? THREE.DataUtils.fromHalfFloat : (v) => v;
-      for (let i = 0; i < d.data.length; i += 4 * 7) { sum += h2f(d.data[i]) * 0.21 + h2f(d.data[i + 1]) * 0.72 + h2f(d.data[i + 2]) * 0.07; n++; }
-      hdri = { tex: pmrem.fromEquirectangular(tex).texture, avg: sum / Math.max(n, 1) };
+      let sum = 0, n = 0, best = 0, bx = 0;
+      for (let y = 0; y < d.height; y += 2) for (let x = 0; x < d.width; x += 2) {
+        const q = (y * d.width + x) * 4, L = h2f(d.data[q]) * 0.21 + h2f(d.data[q + 1]) * 0.72 + h2f(d.data[q + 2]) * 0.07;
+        sum += Math.min(L, 8); n++;
+        if (L > best) { best = L; bx = x; }
+      }
+      // azimut du soleil de l'image (convention équirectangulaire de three.js)
+      const phi = (bx / d.width - 0.5) * Math.PI * 2; // u = atan(z, x) / 2π + 0.5
+      hdri = { tex: pmrem.fromEquirectangular(tex).texture, avg: sum / Math.max(n, 1), sunAz: Math.atan2(Math.cos(phi), Math.sin(phi)) };
       tex.dispose();
     }).catch((e) => console.warn('HDRI ignorée :', e && e.message));
     let skyEnv = null;
@@ -140,7 +148,7 @@ async function boot() {
     G.water = water;
 
     ui.progress(0.5, 'Palmiers, arbres géants et plantes de la jungle…');
-    await waitModels(['palm', 'plants', 'monstera', 'jungle'], 30000);
+    await waitModels(['palm', 'plants', 'jungle', 'fern2', 'grass2', 'othonna', 'roots'], 30000);
     await nextFrame();
     const veg = new Flora(renderer, scene, data, world, atlasRects, Q().veg);
     await veg.init(ASSETS, bank, (p, msg) => ui.progress(0.5 + p * 0.25, msg));
@@ -149,7 +157,7 @@ async function boot() {
 
     ui.progress(0.78, 'Herbe, rochers, avions…');
     await nextFrame();
-    await waitModels(['rocks', 'plane', 'buggy'], 15000);
+    await waitModels(['boulder', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'plane', 'buggy'], 20000);
     const props = new Props(scene, data, world, null, bank);
     await props.init(ASSETS);
     G.props = props;
@@ -169,7 +177,7 @@ async function boot() {
     // abattage et construction
     const lumber = new Lumber(scene, veg, data, props);
     const builder = new Builder(scene, data, props);
-    await builder.init(ASSETS);
+    builder.init(bank);
     G.lumber = lumber; G.builder = builder;
     const groundAt = (x, z) => Math.max(data.height(x, z), builder.heightAt(x, z));
     const onBuilt = (x, z) => builder.heightAt(x, z) > data.height(x, z) + 0.03;
@@ -415,7 +423,13 @@ async function boot() {
       const ambL0 = U.uSkyAmb.value.r * 0.21 + U.uSkyAmb.value.g * 0.72 + U.uSkyAmb.value.b * 0.07;
       hemi.intensity = Math.max(sky.sunIntensity * (1.3 / 2.5) * 0.55 * dayK * (1 - sky.weather * 0.5), ambL0 * 0.9); // ombres profondes mais jamais noires
       if (scene.environment && (!hdri || scene.environment !== hdri.tex)) skyEnv = scene.environment;
-      if (hdri && U.uSunDir.value.y > 0.12) { scene.environment = hdri.tex; scene.environmentIntensity = 0.5 * ambL0 / Math.max(hdri.avg, 1e-4); }
+      if (hdri) {
+        // la carte suit le soleil du jeu : on la tourne pour aligner son soleil, intensité calée sur le ciel
+        scene.environment = hdri.tex;
+        scene.environmentIntensity = 0.55 * ambL0 / Math.max(hdri.avg, 1e-4);
+        const sd2 = U.uSunDir.value, az = Math.atan2(sd2.x, sd2.z);
+        scene.environmentRotation.set(0, az - hdri.sunAz, 0);
+      }
       else if (skyEnv) { scene.environment = skyEnv; scene.environmentIntensity = 0.5; }
       // ombre portée centrée devant la caméra, alignée sur la grille d'ombre
       const sr = Q().shadowR;

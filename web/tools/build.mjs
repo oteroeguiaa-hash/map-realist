@@ -26,8 +26,8 @@ const files = [];
 // Les données binaires (.bin) sont publiées en JSON (base64), un format de données standard.
 const copy = (rel) => {
   const src = path.join(ROOT, 'assets', rel);
-  if (/\.(bin|hdr)$/.test(rel)) {
-    rel = rel.replace(/\.(bin|hdr)$/, '.data.json');
+  if (/\.(bin|hdr|exr)$/.test(rel)) {
+    rel = rel.replace(/\.(bin|hdr|exr)$/, '.data.json');
     const dst = path.join(DIST, 'assets', rel);
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.writeFileSync(dst, JSON.stringify({ format: 'base64', bytes: fs.statSync(src).size, data: fs.readFileSync(src).toString('base64') }));
@@ -40,7 +40,6 @@ const copy = (rel) => {
 };
 for (const f of ['world.json', 'terrain.bin', 'clouds.bin']) copy(f);
 for (const f of fs.readdirSync(path.join(ROOT, 'assets/tex'))) if (!/^t_(grass|ash|peb)_n/.test(f)) copy('tex/' + f);
-for (const f of fs.readdirSync(path.join(ROOT, 'assets/mdl'))) copy('mdl/' + f);
 for (const f of fs.readdirSync(path.join(ROOT, 'assets/hdri'))) copy('hdri/' + f);
 if (fs.existsSync(path.join(ROOT, 'assets/glb'))) for (const f of fs.readdirSync(path.join(ROOT, 'assets/glb'))) copy('glb/' + f);
 const size = files.reduce((a, f) => a + fs.statSync(path.join(DIST, f)).size, 0) + Buffer.byteLength(html);

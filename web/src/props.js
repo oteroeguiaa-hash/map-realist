@@ -5,27 +5,6 @@ import { floatGeo } from './flora.js';
 
 const V3 = THREE.Vector3;
 
-async function loadModel(base, name, aniso) {
-  const [buf, a, n] = await Promise.all([
-    fetchBuf(`${base}/mdl/${name}.data.json`), loadTex(`${base}/mdl/${name}_a.jpg`, { aniso }), loadTex(`${base}/mdl/${name}_n.jpg`, { srgb: false, aniso }),
-  ]);
-  const h = new Uint32Array(buf, 0, 2), nv = h[0], ni = h[1];
-  let o = 8;
-  const bb = new Float32Array(buf, o, 6); o += 24;
-  const P = new Float32Array(buf, o, nv * 3); o += nv * 12;
-  const N = new Float32Array(buf, o, nv * 3); o += nv * 12;
-  const UV = new Float32Array(buf, o, nv * 2); o += nv * 8;
-  const I = nv > 65535 ? new Uint32Array(buf, o, ni) : new Uint16Array(buf, o, ni);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(P, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(N, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(UV, 2));
-  g.setIndex(new THREE.BufferAttribute(I, 1));
-  g.computeBoundingSphere();
-  a.flipY = false; n.flipY = false; a.needsUpdate = n.needsUpdate = true;
-  return { geo: g, map: a, nmap: n, size: [bb[3] - bb[0], bb[4], bb[5] - bb[2]] };
-}
-
 function stdMat(params, key) { return patchMaterial(new THREE.MeshStandardMaterial(params), { key }); }
 
 export class Props {
@@ -36,118 +15,109 @@ export class Props {
     this.lastCam = new V3(1e9, 0, 0);
   }
   async init(base) {
-    const aniso = 4;
-    const names = ['rock_a', 'rock_b', 'rock_c', 'cliff', 'shell', 'log'];
-    const models = await Promise.all(names.map((n) => loadModel(base, n, aniso)));
-    this.models = {};
-    names.forEach((n, i) => { this.models[n] = models[i]; });
-    if (this.bank && this.bank.gltf.rocks) this.useGlbRocks(this.bank.gltf.rocks);
-    this.placeScatter();
+    void base;
+    this.buildDecorTypes();
+    this.placeDecor();
     this.buildPier();
     this.buildStrip();
     this.buildPlanes();
   }
 
-  // Rochers calcaires du joueur : chaque rocher devient un modèle instancié (le socle de terrain est écarté)
-  useGlbRocks(gltf) {
-    const scene = gltf.scene;
-    scene.updateMatrixWorld(true);
-    const pieces = [];
-    scene.traverse((o) => {
-      if (!o.isMesh) return;
-      const g = floatGeo(o.geometry);
-      g.applyMatrix4(o.matrixWorld);
-      g.computeBoundingBox();
-      const b = g.boundingBox, sx = b.max.x - b.min.x, sy = b.max.y - b.min.y, sz = b.max.z - b.min.z;
-      if (sy < 0.14 * Math.max(sx, sz)) return; // socle plat
-      pieces.push({ g, mat: o.material, vol: sx * sy * sz });
-    });
-    if (!pieces.length) return;
-    pieces.sort((a, b) => b.vol - a.vol);
-    const assign = { cliff: 0, rock_a: Math.min(1, pieces.length - 1), rock_b: Math.min(2, pieces.length - 1), rock_c: Math.min(3, pieces.length - 1) };
-    for (const [name, k] of Object.entries(assign)) {
-      const ref = this.models[name].size, pc = pieces[k];
-      const g = pc.g.clone();
-      g.computeBoundingBox();
-      const b = g.boundingBox, cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
-      const sc = Math.max(ref[0], ref[2]) / Math.max(b.max.x - b.min.x, b.max.z - b.min.z);
-      g.translate(-cx, -b.min.y, -cz); g.scale(sc, sc, sc);
-      g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
-      const bb = g.boundingBox;
-      this.models[name] = { geo: g, map: pc.mat.map, nmap: pc.mat.normalMap, size: [bb.max.x - bb.min.x, bb.max.y, bb.max.z - bb.min.z], glb: true };
+  // Nouveau décor (Poly Haven, tailles réelles en mètres) : chaque maillage devient un type instancié
+  buildDecorTypes() {
+    this.types = {};
+    const names = ['boulder', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks'];
+    for (const name of names) {
+      const g = this.bank && this.bank.gltf[name];
+      if (!g) continue;
+      g.scene.updateMatrixWorld(true);
+      let k = 0;
+      g.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        const geo = floatGeo(o.geometry);
+        geo.applyMatrix4(o.matrixWorld);
+        geo.computeBoundingBox();
+        const b = geo.boundingBox;
+        geo.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
+        if (!geo.attributes.normal) geo.computeVertexNormals();
+        geo.computeBoundingBox(); geo.computeBoundingSphere();
+        const bb = geo.boundingBox, src = o.material;
+        const mat = stdMat({ map: src.map || null, normalMap: src.normalMap || null, roughnessMap: src.roughnessMap || null, roughness: 1, metalness: 0 }, 'decor');
+        const key = k ? `${name}${k}` : name;
+        this.types[key] = { name, geo, mat, size: [bb.max.x - bb.min.x, bb.max.y, bb.max.z - bb.min.z] };
+        k++;
+      });
     }
   }
 
-  placeScatter() {
-    const T = this.T, W = T.W, rnd = mulberry32(777), w = this.world;
-    const lists = { rock_a: [], rock_b: [], rock_c: [], cliff: [], shell: [], log: [] };
+  placeDecor() {
+    const T = this.T, W = T.W, rnd = mulberry32(777), w = this.world, TY = this.types;
+    const lists = {};
+    for (const k in TY) lists[k] = [];
+    const keys = (...names) => Object.keys(TY).filter((k) => names.includes(TY[k].name));
+    const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
     const nrm = new V3();
-    const add = (m, x, z, s, rot, tint, sink = 0.15, tilt = 0) => {
-      // rochers : entre 2 et 5 m, jamais de blocs géants étirés
-      if (m.startsWith('rock')) { const d = Math.max(...this.models[m].size); s = clamp(s, 2 / d, 5 / d); }
-      const y = T.height(x, z) - sink * this.models[m].size[1] * s;
-      lists[m].push({ x, y, z, s, rot, tint, tilt });
-      if (this.models[m].size[0] * s > 1.4 && m !== 'log') this.colliders.push({ x, z, r: Math.min(this.models[m].size[0], this.models[m].size[2]) * s * 0.45 });
+    // taille voulue (plus grande dimension) entre a et b mètres
+    const add = (k, x, z, a, b, sink = 0.12, tilt = 0) => {
+      const t = TY[k]; if (!t) return;
+      const d = Math.max(...t.size), s = (a + rnd() * (b - a)) / d;
+      const y = T.height(x, z) - sink * t.size[1] * s;
+      lists[k].push({ x, y, z, s, rot: rnd() * 6.28, tint: 0.85 + rnd() * 0.25, tilt });
+      if (Math.max(t.size[0], t.size[2]) * s > 1.4 && t.name !== 'sandrocks') this.colliders.push({ x, z, r: Math.min(t.size[0], t.size[2]) * s * 0.45, top: y + t.size[1] * s });
     };
-    // rochers côtiers et de jungle
+    const ROCKS = keys('boulder', 'nboulder2', 'nboulder5', 'mossrocks'), FACES = keys('rockface', 'ncliff'), MOUNT = keys('mountain', 'ncliff');
     for (let i = 0; i < 26000; i++) {
       const x = (rnd() - 0.5) * W * 0.85, z = (rnd() - 0.5) * W * 0.85;
       const h = T.height(x, z);
       if (h < -1.2 || h > 330) continue;
-      T.normal(x, z, nrm, 2);
-      const slope = 1 - nrm.y, path = T.mask(T.path, x, z);
-      if (path > 0.2 || T.mask(T.clear, x, z) > 0.3) continue;
+      if (T.mask(T.path, x, z) > 0.15 || T.mask(T.clear, x, z) > 0.3) continue;
       if (Math.hypot(x - w.spawn.x, z - w.spawn.z) < 25) continue;
-      const u = rnd();
-      if (h < 5 && slope > 0.18 && u < 0.5) add(rnd() < 0.6 ? 'rock_c' : 'rock_a', x, z, 8 + rnd() * 22, rnd() * 6.28, 0.42 + rnd() * 0.15, 0.25);
-      else if (h < 2.5 && u < 0.012) add('rock_a', x, z, 5 + rnd() * 9, rnd() * 6.28, 0.55, 0.3);
-      else if (h > 12 && h < 210 && u < 0.03) add(rnd() < 0.5 ? 'rock_a' : 'rock_b', x, z, (rnd() < 0.5 ? 8 : 18) + rnd() * 22, rnd() * 6.28, 0.7 + rnd() * 0.2, 0.35);
-      else if (h >= 200 && u < 0.07) add('rock_c', x, z, 6 + rnd() * 18, rnd() * 6.28, 0.38, 0.3);
+      T.normal(x, z, nrm, 2);
+      const slope = 1 - nrm.y, u = rnd();
+      if (h < 5 && slope > 0.15 && u < 0.45) add(pick(ROCKS), x, z, 2, 5, 0.2);              // rochers de la côte
+      else if (h > 0.3 && h < 1.8 && u < 0.004) add(pick(keys('sandrocks')), x, z, 3, 5, 0.05); // galets sur le sable
+      else if (h > 0.6 && h < 2.2 && u < 0.003) add(pick(keys('trunk2')), x, z, 3.5, 5, 0.15);  // bois flotté
+      else if (slope > 0.45 && h > 8 && u < 0.12) add(pick(FACES), x, z, 4, 9, 0.3);          // parois rocheuses
+      else if (h > 12 && h < 200 && u < 0.02) add(pick(ROCKS), x, z, 2, 5, 0.25);             // rochers moussus en forêt
+      else if (h > 12 && h < 160 && u < 0.035) add(pick(keys('trunk2')), x, z, 3.5, 5, 0.12); // troncs tombés
+      else if (h >= 180 && u < 0.05) add(pick(MOUNT), x, z, 8, 18, 0.3);                       // flancs du volcan
     }
-    // falaise et rochers autour de la cascade
+    // cascade : falaises autour de l'amphithéâtre et rochers au bord du bassin
     const lip = w.waterfall.lip, dir = w.waterfall.dir, pool = w.waterfall.pool, perp = [-dir[1], dir[0]];
-    void lip; void perp;
+    const CL = keys('ncliff', 'rockface');
+    for (let k = -5; k <= 5; k++) {
+      if (Math.abs(k) < 1) continue;
+      const v = k * 6.5 + (rnd() - 0.5) * 2, u = -2 + Math.abs(k) * (0.9 + Math.abs(k) * 0.35);
+      const x = lip[0] + perp[0] * v + dir[0] * u, z = lip[2] + perp[1] * v + dir[1] * u;
+      if (CL.length) add(pick(CL), x, z, 7, 10, 0.25);
+    }
     for (let k = 0; k < 22; k++) {
       const a = rnd() * Math.PI * 2, r = w.waterfall.poolR + 2 + rnd() * 9;
-      add(rnd() < 0.5 ? 'rock_a' : 'rock_b', pool[0] + Math.cos(a) * r, pool[2] + Math.sin(a) * r, 10 + rnd() * 18, rnd() * 6.28, 0.6, 0.4);
+      add(pick(ROCKS), pool[0] + Math.cos(a) * r, pool[2] + Math.sin(a) * r, 2, 5, 0.3);
     }
-    // coquillages et bois flotté sur les plages
-    for (let i = 0; i < 9000 && lists.shell.length < 160; i++) {
-      const near = i < 3000;
-      const x = near ? w.spawn.x + (rnd() - 0.5) * 220 : (rnd() - 0.5) * W * 0.8, z = near ? w.spawn.z + (rnd() - 0.5) * 80 : (rnd() - 0.5) * W * 0.8;
-      const h = T.height(x, z);
-      if (h < 0.4 || h > 1.9) continue;
-      lists.shell.push({ x, y: h - 0.01, z, s: 0.9 + rnd() * 0.8, rot: rnd() * 6.28, tint: 1, tilt: (rnd() - 0.5) * 0.6 });
-    }
-    for (let i = 0; i < 30000 && lists.log.length < 70; i++) {
-      const x = (rnd() - 0.5) * W * 0.8, z = (rnd() - 0.5) * W * 0.8;
-      const h = T.height(x, z);
-      const beach = h > 0.6 && h < 2.2 && rnd() < 0.5, jungle = h > 15 && h < 150 && rnd() < 0.02;
-      if (!beach && !jungle) continue;
-      if (T.mask(T.path, x, z) > 0.2) continue;
-      lists.log.push({ x, y: h - 0.08, z, s: 1.2 + rnd() * 1.4, rot: rnd() * 6.28, tint: beach ? 1.35 : 0.7, tilt: 0 });
-    }
+    void dir;
     this.lists = lists;
     this.inst = {};
-    for (const m of Object.keys(lists)) {
-      const md = this.models[m];
-      const mat = stdMat({ map: md.map, normalMap: md.nmap || null, roughness: m === 'shell' ? 0.45 : 0.92, metalness: 0 }, 'rock_' + m);
-      const im = new THREE.InstancedMesh(md.geo, mat, Math.max(1, lists[m].length));
-      im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, lists[m].length) * 3), 3);
+    for (const k of Object.keys(lists)) {
+      const t = TY[k], cap = Math.max(1, lists[k].length);
+      const im = new THREE.InstancedMesh(t.geo, t.mat, cap);
+      im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      im.castShadow = m !== 'shell'; im.receiveShadow = true;
+      im.castShadow = t.name !== 'sandrocks'; im.receiveShadow = true;
       im.frustumCulled = false;
       im.count = 0;
+      im.userData.R = t.name === 'sandrocks' ? 80 : Math.max(...t.size) > 6 ? 1500 : 220;
       this.scene.add(im);
-      this.inst[m] = im;
+      this.inst[k] = im;
     }
   }
 
   buildPier() {
     const p = this.world.pier, T = this.T;
     const dx = p.x1 - p.x0, dz = p.z1 - p.z0, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, vx = -uz, vz = ux;
-    const wood = this.models.log;
-    const mat = stdMat({ map: wood.map, normalMap: wood.nmap, roughness: 0.85, color: 0xd8cfc0 }, 'pier');
+    // bois du ponton : écorce du nouveau tronc mort (dead_tree_trunk_02)
+    const wood = this.types.trunk2 ? this.types.trunk2.mat : null;
+    const mat = stdMat({ map: wood ? wood.map : null, normalMap: wood ? wood.normalMap : null, roughness: 0.85, color: wood ? 0xd8cfc0 : 0x8a6a4a }, 'pier');
     const geos = [];
     const box = (cx, cy, cz, sx, sy, sz, rot) => {
       const g = new THREE.BoxGeometry(sx, sy, sz);
@@ -255,7 +225,7 @@ export class Props {
     this.lastCam.copy(cam);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new V3(), p = new V3();
     for (const [name, list] of Object.entries(this.lists)) {
-      const im = this.inst[name], R = name === 'shell' ? 50 : name === 'cliff' ? 3000 : 260;
+      const im = this.inst[name], R = im.userData.R;
       let n = 0;
       for (const it of list) {
         const dx = it.x - cam.x, dz = it.z - cam.z;
@@ -265,7 +235,7 @@ export class Props {
         sc.setScalar(it.s);
         m4.compose(p.set(it.x, it.y, it.z), q, sc);
         im.setMatrixAt(n, m4);
-        im.instanceColor.setXYZ(n, it.tint, it.tint * (name === 'rock_a' || name === 'rock_b' ? 1.04 : 1), it.tint * 0.96);
+        im.instanceColor.setXYZ(n, it.tint, it.tint, it.tint * 0.97);
         n++;
       }
       im.count = n;

@@ -2,7 +2,7 @@
 // Les pièces s'alignent sur une grille, se posent sur le relief, bloquent le passage (murs) ou portent
 // le joueur et le buggy (planchers, rampes). Elles sont mémorisées et retrouvées au retour.
 import * as THREE from 'three';
-import { patchMaterial, loadTex, mergeGeometries } from './core.js';
+import { patchMaterial, mergeGeometries } from './core.js';
 
 const V3 = THREE.Vector3;
 export const PIECES = {
@@ -32,12 +32,13 @@ export class Builder {
     this.active = false;
     this.ghost = null;
   }
-  async init(base) {
-    const [map, nmap] = await Promise.all([
-      loadTex(`${base}/mdl/log_a.jpg`, { srgb: true, repeat: true, aniso: 4 }),
-      loadTex(`${base}/mdl/log_n.jpg`, { srgb: false, repeat: true, aniso: 4 }),
-    ]);
-    this.mat = patchMaterial(new THREE.MeshStandardMaterial({ map, normalMap: nmap, roughness: 0.88, color: 0xd9c6ad }), { key: 'build' });
+  async init(bank) {
+    // écorce du tronc mort Poly Haven (dead_tree_trunk_02) pour les rondins
+    let map = null, nmap = null;
+    const g = bank && bank.gltf.trunk2;
+    if (g) g.scene.traverse((o) => { if (o.isMesh && !map) { map = o.material.map; nmap = o.material.normalMap; } });
+    for (const t of [map, nmap]) if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.needsUpdate = true; }
+    this.mat = patchMaterial(new THREE.MeshStandardMaterial({ map, normalMap: nmap, roughness: 0.9, color: map ? 0xffffff : 0x7a5a3a }), { key: 'build' });
     this.ghostOk = new THREE.MeshBasicMaterial({ color: 0x7dffb0, transparent: true, opacity: 0.35, depthWrite: false });
     this.ghostNo = new THREE.MeshBasicMaterial({ color: 0xff6a4a, transparent: true, opacity: 0.35, depthWrite: false });
   }

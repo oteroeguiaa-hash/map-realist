@@ -60,3 +60,11 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Vent : chaque palme et branche oscille avec son propre rythme, d'autant plus qu'elle est loin du tronc.
 - Bordure de végétation dense et nette le long des routes (bananiers, monstera, fougères), sous-bois plus fourni partout, herbe plus verte.
 - Mesure (Chromium logiciel, Moyen, jungle vue d'en haut) : 1,69 M triangles ombres comprises.
+
+## 26/11/2026 — Démo web : nouveau décor Poly Haven et éclairage « stream »
+
+- Gardés : arbres (palmiers, grands arbres, jeunes palmiers), animaux, buggy, avion, outils, ponton, piste, routes, constructions.
+- Supprimés : anciens rochers et falaises, coquillages, bois flotté, petites plantes (monstera, bananiers, fougères du pack), ancienne carte d'éclairage.
+- Nouveau sous-bois : fougères fern_02, touffes grass_medium_01, othonna (côte, volcan), racines root_cluster_01. Nouveaux rochers : boulder_01, namaqualand_boulder_02/05, rock_moss_set_02 (2 à 5 m), parois namaqualand_cliff_01 et rock_face_02 sur les pentes et autour de la cascade, mountainside sur le volcan, galets sand_rocks_small_01 sur les plages, troncs dead_tree_trunk_02.
+- Éclairage d'environnement : stream_2k.exr (EXRLoader), tourné pour que son soleil coïncide avec celui du jeu. Le ciel visible reste le ciel physique (la photo montre une vallée boisée, pas un horizon marin).
+- Mesure (Chromium logiciel, Moyen, jungle vue d'en haut) : 1,84 M triangles ombres comprises. Téléchargement total : 40 Mo.
