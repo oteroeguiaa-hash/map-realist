@@ -23,7 +23,7 @@ function natureMat(src, cat, opts = {}) {
   const m = new THREE.MeshStandardMaterial({
     map: src.map || null, normalMap: src.normalMap || null, roughnessMap: src.roughnessMap || null, metalnessMap: src.metalnessMap || null,
     color: src.color ? src.color.clone() : new THREE.Color(1, 1, 1), roughness: src.roughness ?? 0.8, metalness: Math.min(src.metalness ?? 0, 0.1),
-    alphaTest: leaf ? Math.max(src.alphaTest || 0.42, 0.35) : 0, side: THREE.DoubleSide, vertexColors: false,
+    alphaTest: leaf ? 0.5 : 0, transparent: false, depthWrite: true, side: THREE.DoubleSide, vertexColors: false,
   });
   if (src.normalScale) m.normalScale.copy(src.normalScale);
   const uniforms = { uFade: cat === 'tree' ? FADE_TREE : FADE_BUSH };
@@ -158,7 +158,7 @@ export class Flora {
       loadTex(`${base}/tex/veg_a.webp`, { srgb: true, aniso: 4 }),
       loadTex(`${base}/tex/veg_n.jpg`, { srgb: false, aniso: 4 }),
     ]);
-    const atlasMat = (cat) => patchMaterial(new THREE.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new THREE.Vector2(0.8, 0.8), alphaTest: 0.42, side: THREE.DoubleSide, vertexColors: true, roughness: 0.72 }), {
+    const atlasMat = (cat) => patchMaterial(new THREE.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new THREE.Vector2(0.8, 0.8), alphaTest: 0.5, transparent: false, depthWrite: true, side: THREE.DoubleSide, vertexColors: true, roughness: 0.72 }), {
       key: 'atlas', wind: true, alphaBoost: true, fade: true, canopy: 0.35, uniforms: { uFade: cat === 'tree' ? FADE_TREE : FADE_BUSH },
       afterLights: `{ vec3 vdir = normalize(vWP - uCamPos); float bl = pow(max(dot(vdir, uSunDir), 0.0), 3.0);
         float leaf = 1.0 - step(vMapUv.x, 0.5) * step(0.5, vMapUv.y);
@@ -225,22 +225,12 @@ export class Flora {
         reg('giant', add({ cat: 'tree', name: 'grand arbre', parts: p.parts, h: th + 12, trunkR: p.r * 0.45, crownR: 8 + k }));
       }
     }
-    // --- arbres à feuilles scannées (procéduraux) ---
-    const broad = [['mango', 5], ['almond', 4], ['breadfruit', 3], ['flame', 3], ['banyan', 2], ['hibiscusT', 2]];
+    // Seuls les modèles .glb du joueur sont affichés. Les versions générées ne servent que de secours
+    // si un modèle n'a pas pu être chargé (sinon l'île serait vide).
     let seed = 3000;
-    for (const [a, n] of broad) for (let k = 0; k < n; k++) {
-      const t = makeBroadleaf(A, seed += 71, a);
-      reg('broad', add({ cat: 'tree', name: a, parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR }));
-    }
-    for (let k = 0; k < 4; k++) { const t = makeTreeFern(A, seed += 71); reg('treefern', add({ cat: 'tree', name: 'fougère arborescente', parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
-    { const t = makeDead(A, seed += 71); reg('dead', add({ cat: 'tree', name: 'arbre mort', parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
-    // repli si un modèle du joueur n'a pas pu être chargé
-    if (!this.arch.palm) for (let k = 0; k < 6; k++) { const t = makePalm(A, 1000 + k * 77, false); reg('palm', add({ cat: 'tree', name: 'palmier', parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
-    // --- buissons complémentaires ---
-    for (const [a, n] of [['heliconia', 4], ['grass', 4], ['shrub', 4], ['fern', 3]]) for (let k = 0; k < n; k++) {
-      const t = makeBush(A, seed += 71, a);
-      reg(a === 'fern' ? (this.arch.gfern ? 'fernP' : 'gfern') : a, add({ cat: 'bush', name: a, parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r }));
-    }
+    if (!this.arch.giant) for (const a of ['mango', 'almond', 'banyan']) { const t = makeBroadleaf(A, seed += 71, a); reg('giant', add({ cat: 'tree', name: a, parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
+    if (!this.arch.palm) for (let k = 0; k < 4; k++) { const t = makePalm(A, 1000 + k * 77, false); reg('palm', add({ cat: 'tree', name: 'palmier', parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
+    if (!this.arch.gfern) for (let k = 0; k < 3; k++) { const t = makeBush(A, seed += 71, 'fern'); reg('gfern', add({ cat: 'bush', name: 'fougère', parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r })); }
     if (!this.arch.gmonst) for (let k = 0; k < 3; k++) { const t = makeBush(A, seed += 71, 'anthurium'); reg('gmonst', add({ cat: 'bush', name: 'anthurium', parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r })); }
     if (!this.arch.gbanana) for (let k = 0; k < 2; k++) { const t = makeBush(A, seed += 71, 'bananaY'); reg('gbanana', add({ cat: 'bush', name: 'bananier', parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r })); }
     if (!this.arch.ppalm) for (let k = 0; k < 3; k++) { const t = makePalm(A, 1500 + k * 77, true); reg('ppalm', add({ cat: 'tree', name: 'jeune palmier', parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR })); }
@@ -256,10 +246,10 @@ export class Flora {
 
   place() {
     const T = this.T, W = T.W, rnd = mulberry32(4242), A = this.arch;
-    const pick = (arch) => { const l = A[arch] || A.broad; return l[Math.floor(rnd() * l.length)]; };
+    const pick = (arch) => { const l = A[arch] || A.palm; return l[Math.floor(rnd() * l.length)]; };
     const spawn = this.world.spawn, pier = this.world.pier;
     const nearPier = (x, z) => { const dx = pier.x1 - pier.x0, dz = pier.z1 - pier.z0, L2 = dx * dx + dz * dz; const t = clamp(((x - pier.x0) * dx + (z - pier.z0) * dz) / L2, -0.6, 1); return Math.hypot(x - pier.x0 - dx * t, z - pier.z0 - dz * t) < 14; };
-    const choose = (list) => { const tot = list.reduce((a, b) => a + b[1], 0); let u = rnd() * tot; for (const [k, w] of list) { u -= w; if (u <= 0) return k; } return list[0][0]; };
+    const choose = (all) => { const list = all.filter((e) => A[e[0]] && e[1] > 0); if (!list.length) return null; const tot = list.reduce((a, b) => a + b[1], 0); let u = rnd() * tot; for (const [k, w] of list) { u -= w; if (u <= 0) return k; } return list[0][0]; };
     const I = { x: [], y: [], z: [], r: [], s: [], t: [], c: [], l: [] };
     const nrm = new V3();
     let trees = 0, bushes = 0;
@@ -274,14 +264,16 @@ export class Flora {
       const beach = 1.7 + vnoise(x * 0.045, z * 0.045) * 1.3;
       let p, list;
       if (h < beach) { p = 0.05; list = [['palm', 1]]; }
-      else if (h < 10) { p = 0.42; list = [['palm', 7], ['ppalm', 1.5], ['broad', 1.2]]; }
-      else if (h < 175) { p = 0.62 * (0.75 + nz * 0.5); list = [['broad', 6], ['palm', 1.6], ['ppalm', 1.2], ['giant', 0.25], ['treefern', h > 70 ? 1.4 : 0.15], ['dead', 0.04]]; }
-      else { p = 0.26 * (1 - smoothstep(220, 285, h)); list = [['treefern', 2], ['broad', 0.8], ['dead', 0.4]]; }
+      else if (h < 10) { p = 0.42; list = [['palm', 7], ['ppalm', 1.5], ['giant', 0.5]]; }
+      else if (h < 175) { p = 0.5 * (0.75 + nz * 0.5); list = [['giant', 2.4], ['palm', 2.2], ['ppalm', 2.0]]; }
+      else { p = 0.2 * (1 - smoothstep(220, 285, h)); list = [['ppalm', 1.2], ['palm', 0.6], ['giant', 0.4]]; }
       if (wet > 0.55) p *= 0.12;
       if (slope > 0.5) p *= 0.2;
       p *= 0.75 + nz2 * 0.5;
       if (rnd() > p * this.q.density) continue;
-      const arch = choose(list), type = pick(arch);
+      const arch = choose(list);
+      if (!arch) continue;
+      const type = pick(arch);
       let rot = rnd() * Math.PI * 2, lean = 0;
       if (arch === 'palm') {
         lean = (h < 12 ? 0.25 + rnd() * 0.6 : rnd() * 0.3);
@@ -300,15 +292,16 @@ export class Flora {
       const slope = 1 - nrm.y, nz = vnoise(x * 0.03 + 4, z * 0.03 - 8);
       const beach = 1.7 + vnoise(x * 0.045, z * 0.045) * 1.3;
       let p, list;
-      if (h < beach) { p = 0.02; list = [['grass', 1]]; }
-      else if (h < 10) { p = 0.28; list = [['grass', 3], ['gfern', 1.2], ['shrub', 1.5], ['heliconia', 0.6], ['gmonst', 0.8]]; }
-      else if (h < 190) { p = 0.66 * (0.6 + nz * 0.7); list = [['gfern', 4.5], ['gmonst', 3.2], ['gbanana', wet > 0.05 ? 2.5 : 0.7], ['heliconia', wet > 0.05 ? 2 : 0.8], ['shrub', 1.2], ['fernP', 1], ['grass', 0.5]]; }
-      else { p = 0.18; list = [['grass', 3], ['gfern', 1]]; }
-      if (clear > 0.3) { p *= 0.12; list = [['grass', 1]]; }
+      if (h < beach) continue; // plage nette : pas de touffes plantées dans le sable
+      if (h < 10) { p = 0.22; list = [['gfern', 1.2], ['gmonst', 1], ['gbanana', 0.5]]; }
+      else if (h < 190) { p = 0.66 * (0.6 + nz * 0.7); list = [['gfern', 4.5], ['gmonst', 3.2], ['gbanana', wet > 0.05 ? 2.5 : 0.8]]; }
+      else { p = 0.15; list = [['gfern', 1]]; }
+      if (clear > 0.3) p *= 0.12;
       if (wet > 0.75) p *= 0.3;
       if (slope > 0.55) p *= 0.3;
       if (rnd() > p * this.q.density) continue;
-      const arch = choose(list.filter((e) => A[e[0]]).length ? list.filter((e) => A[e[0]]) : [['grass', 1]]);
+      const arch = choose(list);
+      if (!arch) continue;
       I.x.push(x); I.y.push(h - 0.04); I.z.push(z); I.r.push(rnd() * Math.PI * 2); I.s.push(0.75 + rnd() * 0.55); I.t.push(pick(arch)); I.c.push(0.82 + rnd() * 0.32); I.l.push(0);
       bushes++;
     }

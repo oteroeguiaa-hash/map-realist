@@ -28,3 +28,12 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Panneau « Crédits des modèles 3D » (obligatoire pour les licences CC-BY).
 - Mesures (Chromium, rendu logiciel, qualité Moyen) : 1,1 M triangles à la plage, 1,45 M dans la jungle la plus dense (ombres comprises), 120 à 200 appels de dessin. Fluidité réelle sur iPhone à vérifier par le joueur.
 - **Prochaine étape :** retours du joueur sur iPhone ; brume et rayons de soleil dans la jungle.
+
+## 26/11/2026 — Démo web : nettoyage et chaîne d'effets officielle three.js
+
+- Supprimé : arbres et buissons générés par code (seulement en secours si un modèle ne charge pas), herbe en brins, gros blocs de falaise étirés. Rochers limités à 2–5 m.
+- Feuilles : alphaTest 0,5, pas de transparence, écriture de profondeur, double face ; couleur étendue sous les zones transparentes des textures (fin des liserés noirs).
+- Rendu : EffectComposer → RenderPass → étalonnage → UnrealBloomPass (0,25 / 0,6 / 0,85) → OutputPass (ACES Filmic, exposition 1,15).
+- Lumière : HemisphereLight #87ceeb / #6b5e45, soleil doré #fff2d6, biais d'ombre −0,0005, éclairage d'ambiance par la photo HDR « Rainforest Trail » (Poly Haven) le jour.
+- Sol : terre « Farm Soil » (pistes et plaques sous la jungle), galets « Dry River Pebbles » (rives, bassin, criques), roche « Dark Rock 02 » en projection triplanaire complète.
+- Mesures (Chromium logiciel, Élevé) : 0,8 M triangles à la plage, 1,45 M dans la jungle.

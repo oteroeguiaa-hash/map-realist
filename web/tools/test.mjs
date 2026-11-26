@@ -70,6 +70,10 @@ const shots = {
     { name: 'c_pier', setup: `G.teleport('ponton');` },
   ],
   spawn: [{ name: 'spawn', setup: '' }],
+  probe: [{ name: 'probe', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x-60, G.terrain.height(s.x-60, s.z-180)+2.2, s.z-180); G.rig.yaw = 0.3; G.rig.pitch = 0.05;`, after: `
+    const L=[]; G.scene.traverse(o=>{ if(o.isLight) L.push(o.type+':'+o.intensity.toFixed(2)); });
+    const mats=new Set(); G.scene.traverse(o=>{ if(o.isMesh && /monstera/i.test(o.name)) mats.add(o.material.roughness+'/'+o.material.metalness+'/'+(o.material.map&&o.material.map.image&&o.material.map.image.width)); });
+    return 'env '+G.scene.environmentIntensity.toFixed(3)+' expo '+G.expo.toFixed(3)+' '+L.join(' ')+' monst '+[...mats].join(',');` }],
   perf: [{ name: 'perf_jungle', setup: `document.querySelector('[data-q="1"]').click(); G.rig.setMode('drone'); G.camera.position.set(165.4,16.1,533.5); G.rig.yaw=0.5; G.rig.pitch=-0.05;`, after: `
     const rows=[]; G.scene.traverse(o=>{ if(!o.isMesh||!o.visible) return; let p=o; while(p){ if(!p.visible) return; p=p.parent; } const g=o.geometry; const t=(g.index?g.index.count:g.attributes.position.count)/3; const n=o.isInstancedMesh?o.count:1; rows.push([o.name||(o.parent&&o.parent.name)||o.material.type, n, Math.round(t), Math.round(t*n), 'ombre', o.castShadow?(o.shadowCount??n)*t|0:0]); });
     rows.sort((a,b)=>b[3]-a[3]); const sm=rows.reduce((a,r)=>a+r[3],0), ss=rows.reduce((a,r)=>a+r[5],0); rows.unshift(['TOTAL visible',rows.length,0,sm,'ombre',ss]); return rows.slice(0,40).map(r=>r.join(' ')).join(' | ');` }],

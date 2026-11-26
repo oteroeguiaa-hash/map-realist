@@ -36,7 +36,7 @@ def ph_mdl_tex(i, kind):
 
 # ---------------- Couches de sol ----------------
 LAYERS = [('sand', 'sand_01'), ('jungle', 'forest_leaves_02'), ('grass', 'leafy_grass'),
-          ('rock', 'dark_rock_02'), ('ash', 'burned_ground_01'), ('path', 'brown_mud_leaves_01')]
+          ('rock', 'dark_rock_02'), ('ash', 'burned_ground_01'), ('path', 'farm_soil'), ('peb', 'dry_river_pebbles')]
 for name, pid in LAYERS:
     a = ph_tex(pid, 'Diffuse').convert('RGB').resize((1024, 1024), LZ)
     a.save(f'{OUT}/t_{name}_a.jpg', quality=84, optimize=True, progressive=True)

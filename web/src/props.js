@@ -83,6 +83,8 @@ export class Props {
     const lists = { rock_a: [], rock_b: [], rock_c: [], cliff: [], shell: [], log: [] };
     const nrm = new V3();
     const add = (m, x, z, s, rot, tint, sink = 0.15, tilt = 0) => {
+      // rochers : entre 2 et 5 m, jamais de blocs géants étirés
+      if (m.startsWith('rock')) { const d = Math.max(...this.models[m].size); s = clamp(s, 2 / d, 5 / d); }
       const y = T.height(x, z) - sink * this.models[m].size[1] * s;
       lists[m].push({ x, y, z, s, rot, tint, tilt });
       if (this.models[m].size[0] * s > 1.4 && m !== 'log') this.colliders.push({ x, z, r: Math.min(this.models[m].size[0], this.models[m].size[2]) * s * 0.45 });
@@ -104,14 +106,7 @@ export class Props {
     }
     // falaise et rochers autour de la cascade
     const lip = w.waterfall.lip, dir = w.waterfall.dir, pool = w.waterfall.pool, perp = [-dir[1], dir[0]];
-    for (let row = 0; row < 2; row++) for (let k = -6; k <= 6; k++) {
-      if (Math.abs(k) < 1) continue;
-      const v = k * 6.2 + (rnd() - 0.5) * 2;
-      const u = -2 + Math.abs(k) * (0.9 + Math.abs(k) * 0.35) + row * 2.5;
-      const x = lip[0] + perp[0] * v + dir[0] * u, z = lip[2] + perp[1] * v + dir[1] * u;
-      const rot = Math.atan2(dir[0], dir[1]) + Math.atan2(v, 30) * 0.8 + (rnd() - 0.5) * 0.6;
-      lists.cliff.push({ x, y: pool[1] - 4 + row * 9, z, s: 5.5 + rnd() * 2.5, rot, tint: 0.5 + rnd() * 0.15, tilt: (rnd() - 0.5) * 0.2 });
-    }
+    void lip; void perp;
     for (let k = 0; k < 22; k++) {
       const a = rnd() * Math.PI * 2, r = w.waterfall.poolR + 2 + rnd() * 9;
       add(rnd() < 0.5 ? 'rock_a' : 'rock_b', pool[0] + Math.cos(a) * r, pool[2] + Math.sin(a) * r, 10 + rnd() * 18, rnd() * 6.28, 0.6, 0.4);

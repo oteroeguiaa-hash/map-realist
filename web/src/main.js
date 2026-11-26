@@ -10,7 +10,7 @@ import { Flora } from './flora.js';
 import { ModelBank } from './models.js';
 import { Player } from './player.js';
 import { Fauna } from './fauna.js';
-import { Grass } from './grass.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Props } from './props.js';
 import { Buggy } from './buggy.js';
 import { Effects } from './fx.js';
@@ -35,7 +35,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const G = (window.__game = {
   mode: 'foot',
-  ready: false, autoQ: true, qi: isMobile ? 1 : 2, frame: 0, fpsAvg: 30, scale: 1, paused: false,
+  ready: false, expo: 1, autoQ: true, qi: isMobile ? 1 : 2, frame: 0, fpsAvg: 30, scale: 1, paused: false,
 });
 const ui = new UI();
 
@@ -98,10 +98,29 @@ async function boot() {
     const sun = new THREE.DirectionalLight(0xffffff, 1);
     sun.castShadow = true;
     sun.shadow.mapSize.set(Q().shadow, Q().shadow);
-    sun.shadow.bias = -0.0004;
+    sun.shadow.bias = -0.0005;
     sun.shadow.normalBias = 0.6;
     sun.shadow.radius = 2;
     scene.add(sun, sun.target);
+    // lumière d'ambiance ciel / sol : les ombres restent lisibles et chaudes, jamais noires
+    const hemi = new THREE.HemisphereLight(0x87ceeb, 0x6b5e45, 1.3);
+    scene.add(hemi);
+    const GOLD = new THREE.Color(0xfff2d6);
+    // éclairage d'environnement : photo HDR « Rainforest Trail » (Poly Haven) le jour
+    let hdri = null;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    fetchBuf(`${ASSETS}/hdri/rainforest_trail_1k.data.json`).then((buf) => {
+      const d = new RGBELoader().parse(buf);
+      const tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
+      tex.colorSpace = THREE.LinearSRGBColorSpace; tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
+      let sum = 0, n = 0;
+      const h2f = d.type === THREE.HalfFloatType ? THREE.DataUtils.fromHalfFloat : (v) => v;
+      for (let i = 0; i < d.data.length; i += 4 * 7) { sum += h2f(d.data[i]) * 0.21 + h2f(d.data[i + 1]) * 0.72 + h2f(d.data[i + 2]) * 0.07; n++; }
+      hdri = { tex: pmrem.fromEquirectangular(tex).texture, avg: sum / Math.max(n, 1) };
+      tex.dispose();
+    }).catch((e) => console.warn('HDRI ignorée :', e && e.message));
+    let skyEnv = null;
     G.sun = sun;
 
     ui.progress(0.42, 'Lagon, récif et cascade…');
@@ -118,8 +137,6 @@ async function boot() {
 
     ui.progress(0.78, 'Herbe, rochers, avions…');
     await nextFrame();
-    const grass = new Grass(scene, data, Q().veg);
-    G.grass = grass;
     await waitModels(['rocks', 'plane', 'buggy'], 15000);
     const props = new Props(scene, data, world, null, bank);
     await props.init(ASSETS);
@@ -148,7 +165,7 @@ async function boot() {
     const sound = new Sound();
     G.sound = sound;
 
-    const post = new Post(renderer, Q().msaa);
+    const post = new Post(renderer, scene, camera, Q().msaa);
     G.post = post;
 
     // ---------- réglages ----------
@@ -156,10 +173,9 @@ async function boot() {
       const q = Q();
       terrain.setQuality(q.terrain);
       veg.setQuality(q.veg);
-      grass.setQuality(q.veg);
       sun.shadow.mapSize.set(q.shadow, q.shadow);
       if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
-      post.msaa = q.msaa;
+      if (post.msaa !== q.msaa) post.setMSAA(q.msaa);
       G.scale = q.scale;
       resize(true);
     };
@@ -254,8 +270,8 @@ async function boot() {
       camera.fov = w > h ? 58 : 72;
       camera.updateProjectionMatrix();
       const pr = renderer.getPixelRatio();
-      post.setSize(w * pr, h * pr, G.scale);
-      if (force) post.rt = post.rt; // no-op
+      post.setSize(w, h, G.scale, pr);
+      void force;
     }
     window.addEventListener('resize', () => resize());
     G.scale = Q().scale;
@@ -318,8 +334,15 @@ async function boot() {
       const sunMoved = sky.update(dt, scene) || sunPrev.distanceToSquared(U.uSunDir.value) > 1e-6;
       sunPrev.copy(U.uSunDir.value);
       wl.update(dt, sunMoved);
-      sun.color.copy(sky.sunLightColor);
+      sun.color.copy(sky.sunLightColor).lerp(GOLD, 0.45);
       sun.intensity = sky.sunIntensity;
+      // ambiance : même rapport que 2,5 (soleil) / 1,3 (ciel), suit l'heure et la météo
+      const dayK = clamp(U.uSunDir.value.y * 4 + 0.15, 0.05, 1);
+      const ambL0 = U.uSkyAmb.value.r * 0.21 + U.uSkyAmb.value.g * 0.72 + U.uSkyAmb.value.b * 0.07;
+      hemi.intensity = Math.max(sky.sunIntensity * (1.3 / 2.5) * dayK * (1 - sky.weather * 0.5), ambL0 * 1.2);
+      if (scene.environment && (!hdri || scene.environment !== hdri.tex)) skyEnv = scene.environment;
+      if (hdri && U.uSunDir.value.y > 0.12) { scene.environment = hdri.tex; scene.environmentIntensity = 0.5 * ambL0 / Math.max(hdri.avg, 1e-4); }
+      else if (skyEnv) { scene.environment = skyEnv; scene.environmentIntensity = 0.5; }
       // ombre portée centrée devant la caméra, alignée sur la grille d'ombre
       const sr = Q().shadowR;
       const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
@@ -339,13 +362,12 @@ async function boot() {
       // exposition automatique
       const sunL = U.uSunColor.value.r * 0.21 + U.uSunColor.value.g * 0.72 + U.uSunColor.value.b * 0.07;
       const ambL = U.uSkyAmb.value.r * 0.21 + U.uSkyAmb.value.g * 0.72 + U.uSkyAmb.value.b * 0.07;
-      const refE = sunL * Math.max(sd.y, 0.12) * (0.35 + 0.65 * (1 - sky.weather * 0.6)) + ambL * Math.PI;
+      const refE = sunL * Math.max(sd.y, 0.12) * (0.35 + 0.65 * (1 - sky.weather * 0.6)) + ambL * Math.PI + hemi.intensity * 0.6;
       const targetExp = clamp(5.0 / Math.max(refE, 1.5), 0.35, 2.6);
-      renderer.toneMappingExposure = G.frame < 3 ? targetExp : lerp(renderer.toneMappingExposure, targetExp, 1 - Math.exp(-dt * 1.5));
+      G.expo = G.frame < 3 ? targetExp : lerp(G.expo, targetExp, 1 - Math.exp(-dt * 1.5));
       // monde
       terrain.update(camera);
       veg.update(camera, dt);
-      grass.update(camera);
       water.update(camera, sky.weather);
       props.update(camera, dt);
       sea.update(dt, camera);
@@ -360,7 +382,7 @@ async function boot() {
         action: act, tools: G.mode === 'foot' && !drone && player.inv.length > 0, fps: G.fpsAvg,
       });
       camera.updateMatrixWorld();
-      post.render(scene, camera, U.uTime.value);
+      post.render(dt, U.uTime.value, G.expo);
       // performance & résolution dynamique
       if (dt > 0) { ftAcc += dt; ftN++; }
       qTimer += dt;

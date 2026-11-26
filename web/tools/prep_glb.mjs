@@ -89,6 +89,9 @@ for (const [name, cfg] of Object.entries(MODELS)) {
   }
   after = countTris();
   // textures : WebP, taille maximale
+  // feuilles : la couleur des pixels transparents est étendue depuis la feuille voisine,
+  // sinon le filtrage de texture fait apparaître un liseré noir autour de chaque feuille
+  if (cfg.kind === 'veg') await bleedAlpha(root, cfg.tex);
   await doc.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [cfg.tex, cfg.tex], quality: 82 }));
   if (root.listAnimations().length) await doc.transform(resample({ tolerance: 1e-4 }));
   await doc.transform(prune());
@@ -103,3 +106,33 @@ for (const [name, cfg] of Object.entries(MODELS)) {
 }
 fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
 console.log('total (base64)', (total / 1048576).toFixed(1), 'Mo');
+
+async function bleedAlpha(root, size) {
+  const done = new Set();
+  for (const m of root.listMaterials()) {
+    const t = m.getBaseColorTexture();
+    if (!t || done.has(t) || m.getAlphaMode() === 'OPAQUE') continue;
+    done.add(t);
+    const { data, info } = await sharp(Buffer.from(t.getImage())).resize(size, size, { fit: 'inside', withoutEnlargement: true }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const W = info.width, H = info.height, N = W * H;
+    let ok = new Uint8Array(N), cnt = 0, sr = 0, sg = 0, sb = 0;
+    for (let i = 0; i < N; i++) if (data[i * 4 + 3] > 100) { ok[i] = 1; cnt++; sr += data[i * 4]; sg += data[i * 4 + 1]; sb += data[i * 4 + 2]; }
+    if (cnt === N || cnt === 0) continue;
+    for (let pass = 0; pass < 48; pass++) {
+      const next = ok.slice(); let changed = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x; if (ok[i]) continue;
+        let r = 0, g = 0, b = 0, k = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+          const j = yy * W + xx; if (!ok[j]) continue;
+          r += data[j * 4]; g += data[j * 4 + 1]; b += data[j * 4 + 2]; k++;
+        }
+        if (k) { data[i * 4] = r / k; data[i * 4 + 1] = g / k; data[i * 4 + 2] = b / k; next[i] = 1; changed++; }
+      }
+      ok = next; if (!changed) break;
+    }
+    for (let i = 0; i < N; i++) if (!ok[i]) { data[i * 4] = sr / cnt; data[i * 4 + 1] = sg / cnt; data[i * 4 + 2] = sb / cnt; }
+    t.setImage(new Uint8Array(await sharp(data, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer())).setMimeType('image/png');
+  }
+}

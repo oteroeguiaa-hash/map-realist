@@ -181,7 +181,7 @@ export class Effects {
       while (this.tMist > 0.12) {
         this.tMist -= 0.12;
         const a = r() * 6.28;
-        this.mist.emit(this.impact.x + Math.cos(a) * 2, this.impact.y + 0.5, this.impact.z + Math.sin(a) * 2, Math.cos(a) * 2.5, 1.2 + r() * 1.5, Math.sin(a) * 2.5, 5 + r() * 3, 3, 13 + r() * 6, 0.22, 0.95, 0.97, 1.0);
+        this.mist.emit(this.impact.x + Math.cos(a) * 2, this.impact.y + 0.5, this.impact.z + Math.sin(a) * 2, Math.cos(a) * 2.5, 1.2 + r() * 1.5, Math.sin(a) * 2.5, 5 + r() * 3, 3, 11 + r() * 5, 0.11, 0.86, 0.9, 0.93);
         for (let k = 0; k < 3; k++) { const b = r() * 6.28; this.spray.emit(this.impact.x + Math.cos(b) * 1.5, this.impact.y + 0.3, this.impact.z + Math.sin(b) * 1.5, Math.cos(b) * (2 + r() * 4), 3 + r() * 5, Math.sin(b) * (2 + r() * 4), 1 + r() * 0.6, 0.15, 0.4, 0.6, 0.95, 0.97, 1.0); }
       }
     }
