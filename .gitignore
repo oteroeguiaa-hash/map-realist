@@ -1,0 +1,36 @@
+# Unreal Engine : fichiers générés (jamais versionnés)
+**/Binaries/
+**/Intermediate/
+**/Saved/
+**/DerivedDataCache/
+*_BuiltData.uasset
+
+# Packs d'assets tiers : licence + taille, listés dans docs/ASSETS.md
+**/Content/Fab/
+**/Content/Megascans/
+**/Content/ThirdParty/
+
+# Versions packagées du jeu
+**/Packaged/
+*.pak
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.sln
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Python
+__pycache__/
+*.pyc
+
+# Système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code : réglages locaux
+.claude/settings.local.json
