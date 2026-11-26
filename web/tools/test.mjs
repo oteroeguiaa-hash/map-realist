@@ -18,7 +18,8 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' });
   fs.createReadStream(p).pipe(res);
 });
-await new Promise((r) => server.listen(8765, r));
+const PORT = +(process.env.PORT || 8765);
+await new Promise((r) => server.listen(PORT, r));
 const W = +(process.env.W || 844), H = +(process.env.H || 390);
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
 const page = await browser.newPage({ viewport: process.argv[2] === 'preview' ? { width: 1400, height: 900 } : { width: W, height: H }, deviceScaleFactor: 1 });
@@ -33,7 +34,7 @@ await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/**', (
 });
 if (process.argv[2] === 'preview') {
   for (const v of ['front', 'side', 'top']) {
-    await page.goto(`http://localhost:8765/preview.html?v=${v}${process.env.M ? '&m=' + process.env.M : ''}`, { waitUntil: 'load' });
+    await page.goto(`http://localhost:${PORT}/preview.html?v=${v}${process.env.M ? '&m=' + process.env.M : ''}`, { waitUntil: 'load' });
     await page.waitForFunction(() => window.__preview && window.__preview.ready, null, { timeout: 300000, polling: 500 });
     await page.screenshot({ path: path.join(OUT, `preview_${v}.png`) });
   }
@@ -41,7 +42,7 @@ if (process.argv[2] === 'preview') {
   await browser.close(); server.close(); process.exit(0);
 }
 const t0 = Date.now();
-await page.goto('http://localhost:8765/' + (process.env.Q ? '?q=' + process.env.Q : ''), { waitUntil: 'load' });
+await page.goto(`http://localhost:${PORT}/` + (process.env.Q ? '?q=' + process.env.Q : ''), { waitUntil: 'load' });
 try {
   await page.waitForFunction(() => window.__game && (window.__game.ready || document.getElementById('load').classList.contains('err')), null, { timeout: 600000, polling: 1000 });
 } catch (e) { logs.push('[timeout] ' + e.message); }
