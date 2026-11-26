@@ -68,6 +68,8 @@ export class TerrainData {
       if (st) { const u = (x - st.x) * sa + (z - st.z) * ca, v = (x - st.x) * ca - (z - st.z) * sa; k *= S(0, 25, Math.max(Math.abs(u) - st.length / 2, Math.abs(v) - st.width / 2)); }
       k *= S(8, 20, Math.hypot(x - sp.x, z - sp.z));                  // point de départ plat
       k *= S(6, 16, Math.hypot(x - pool[0], z - pool[2]) - world.waterfall.poolR);
+      if (world.camp) k *= S(4, 12, Math.hypot(x - world.camp.x, z - world.camp.z) - world.camp.r);
+      if (world.ponds) for (const p of world.ponds) { const dp = Math.hypot(x - p.x, z - p.z) - p.r; if (dp < 14) k *= S(2, 14, dp); }
       if (k <= 0.001) continue;
       let d;
       if (h0 < 2.6) {
@@ -77,6 +79,9 @@ export class TerrainData {
       } else {
         d = (vnoise(x / 9 - 5, z / 9 + 8) - 0.5) * 0.9 + (vnoise(x / 4.2 + 17, z / 4.2 - 9) - 0.5) * 0.45;
       }
+      // trous irréguliers, ici et là (pas partout) : petites cuvettes de 0,3 à 0,9 m
+      const pit = vnoise(x / 6.5 + 31, z / 6.5 - 17);
+      if (pit > 0.74 && h0 > 0.6) d -= Math.pow((pit - 0.74) / 0.26, 1.5) * (0.5 + 0.6 * vnoise(x / 2.1, z / 2.1)) * (h0 < 2.6 ? 0.6 : 1);
       h[q] = h0 + d * k;
     }
   }

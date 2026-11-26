@@ -25,6 +25,12 @@ export class UI {
     }));
     document.querySelectorAll('[data-place]').forEach((b) => b.addEventListener('click', () => { this.onPlace(b.dataset.place); this.openMenu(false); }));
     $('tFps').addEventListener('change', () => { $('fps').hidden = !$('tFps').checked; });
+    this.onZoom = this.onBeam = () => {};
+    this.zoom = 6;
+    const zoomBy = (f) => { this.zoom = Math.min(20, Math.max(1, Math.round(this.zoom * f))); if (this.zoom === 1 && f > 1) this.zoom = 2; this.onZoom(this.zoom); };
+    $('bZoomIn').addEventListener('click', () => zoomBy(1.5));
+    $('bZoomOut').addEventListener('click', () => zoomBy(1 / 1.5));
+    $('sBeam').addEventListener('input', (e) => this.onBeam(+e.target.value));
     $('bCredits').addEventListener('click', () => { this.openMenu(false); $('credits').hidden = false; });
     $('bCredClose').addEventListener('click', () => { $('credits').hidden = true; });
     $('bPlay').addEventListener('click', () => {
@@ -74,6 +80,21 @@ export class UI {
     set('wood', 'hidden', !(s.wood > 0 || s.building));
     set('woodN', 'textContent', String(s.wood || 0));
     set('fps', 'textContent', `${Math.round(s.fps)} i/s`);
+  }
+  optics(bino, zoom, torch) {
+    const $ = this.$;
+    const bn = $('bino');
+    if (bn.hasAttribute('hidden') === bino) {
+      bn.toggleAttribute('hidden', !bino); // élément SVG : pas de propriété .hidden
+      if (bino) {
+        // deux optiques qui se chevauchent un peu, bords adoucis
+        const W = window.innerWidth, H = window.innerHeight, r = Math.min(H * 0.46, W * 0.27);
+        for (const [id, cx] of [['lensL', W / 2 - r * 0.78], ['lensR', W / 2 + r * 0.78]]) { const c = $(id); c.setAttribute('cx', cx); c.setAttribute('cy', H / 2); c.setAttribute('r', r); }
+      }
+    }
+    if ($('zoomBar').hidden === bino) $('zoomBar').hidden = !bino;
+    if (bino) { const t = Math.round(zoom) + '×'; if ($('zoomV').textContent !== t) $('zoomV').textContent = t; }
+    if ($('beamBar').hidden === torch) $('beamBar').hidden = !torch;
   }
   credits(manifest) {
     const ul = this.$('credList');

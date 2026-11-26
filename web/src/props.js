@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { patchMaterial, loadTex, fetchBuf, mulberry32, clamp, lerp, vnoise, GeoBuilder, mergeGeometries } from './core.js';
 import { floatGeo } from './flora.js';
+import { rockyBeach } from './sites.js';
 
 const V3 = THREE.Vector3;
 
@@ -26,7 +27,7 @@ export class Props {
   // Nouveau décor (Poly Haven, tailles réelles en mètres) : chaque maillage devient un type instancié
   buildDecorTypes() {
     this.types = {};
-    const names = ['boulder', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks'];
+    const names = ['nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks'];
     for (const name of names) {
       const g = this.bank && this.bank.gltf[name];
       if (!g) continue;
@@ -65,22 +66,37 @@ export class Props {
       lists[k].push({ x, y, z, s, rot: rnd() * 6.28, tint: 0.85 + rnd() * 0.25, tilt });
       if (Math.max(t.size[0], t.size[2]) * s > 1.4 && t.name !== 'sandrocks') this.colliders.push({ x, z, r: Math.min(t.size[0], t.size[2]) * s * 0.45, top: y + t.size[1] * s });
     };
-    const ROCKS = keys('boulder', 'nboulder2', 'nboulder5', 'mossrocks'), FACES = keys('rockface', 'ncliff'), MOUNT = keys('mountain', 'ncliff');
+    const ROCKS = keys('nboulder2', 'nboulder5', 'mossrocks'), FACES = keys('rockface', 'ncliff'), MOUNT = keys('mountain', 'ncliff');
     for (let i = 0; i < 26000; i++) {
       const x = (rnd() - 0.5) * W * 0.85, z = (rnd() - 0.5) * W * 0.85;
       const h = T.height(x, z);
       if (h < -1.2 || h > 330) continue;
       if (T.mask(T.path, x, z) > 0.15 || T.mask(T.clear, x, z) > 0.3) continue;
       if (Math.hypot(x - w.spawn.x, z - w.spawn.z) < 25) continue;
+      if (w.camp && Math.hypot(x - w.camp.x, z - w.camp.z) < w.camp.r + 4) continue;
+      if ((w.ponds || []).some((p) => Math.hypot(x - p.x, z - p.z) < p.r * 1.3)) continue;
       T.normal(x, z, nrm, 2);
       const slope = 1 - nrm.y, u = rnd();
-      if (h < 5 && slope > 0.15 && u < 0.45) add(pick(ROCKS), x, z, 2, 5, 0.2);              // rochers de la côte
+      if (h > -0.6 && h < 3.2 && rockyBeach(x, z) && u < 0.5) {                                 // criques rocheuses : rochers sur le sable
+        if (u < 0.32) add(pick(keys('sandrocks')), x, z, 3, 5, 0.06); else add(pick(ROCKS), x, z, 1.5, 4.5, 0.25);
+      }
+      else if (h < 5 && slope > 0.15 && u < 0.45) add(pick(ROCKS), x, z, 2, 5, 0.2);              // rochers de la côte
       else if (h > 0.3 && h < 1.8 && u < 0.004) add(pick(keys('sandrocks')), x, z, 3, 5, 0.05); // galets sur le sable
       else if (h > 0.6 && h < 2.2 && u < 0.003) add(pick(keys('trunk2')), x, z, 3.5, 5, 0.15);  // bois flotté
       else if (slope > 0.45 && h > 8 && u < 0.12) add(pick(FACES), x, z, 4, 9, 0.3);          // parois rocheuses
       else if (h > 12 && h < 200 && u < 0.02) add(pick(ROCKS), x, z, 2, 5, 0.25);             // rochers moussus en forêt
       else if (h > 12 && h < 160 && u < 0.035) add(pick(keys('trunk2')), x, z, 3.5, 5, 0.12); // troncs tombés
       else if (h >= 180 && u < 0.05) add(pick(MOUNT), x, z, 8, 18, 0.3);                       // flancs du volcan
+    }
+    // criques rocheuses : beaucoup de rochers posés sur le sable (et des crabes autour)
+    for (let i = 0; i < 90000; i++) {
+      const x = (rnd() - 0.5) * W * 0.9, z = (rnd() - 0.5) * W * 0.9;
+      if (!rockyBeach(x, z)) continue;
+      const h = T.height(x, z);
+      if (h < -0.8 || h > 3.0 || T.mask(T.path, x, z) > 0.1 || Math.hypot(x - w.spawn.x, z - w.spawn.z) < 30) continue;
+      const u = rnd();
+      if (u < 0.08) add(pick(keys('sandrocks')), x, z, 3, 5, 0.06);
+      else if (u < 0.2) add(pick(ROCKS), x, z, 0.8, 4.5, 0.3);
     }
     // cascade : falaises autour de l'amphithéâtre et rochers au bord du bassin
     const lip = w.waterfall.lip, dir = w.waterfall.dir, pool = w.waterfall.pool, perp = [-dir[1], dir[0]];
@@ -106,7 +122,7 @@ export class Props {
       im.castShadow = t.name !== 'sandrocks'; im.receiveShadow = true;
       im.frustumCulled = false;
       im.count = 0;
-      im.userData.R = t.name === 'sandrocks' ? 80 : Math.max(...t.size) > 6 ? 1200 : 220;
+      im.userData.R = t.name === 'sandrocks' ? 50 : Math.max(...t.size) > 6 ? 1200 : 120;
       // ombres : seulement les rochers proches (les instances sont triées par distance)
       im.userData.sc = 0;
       im.onBeforeShadow = function () { this._c = this.count; this.count = Math.min(this.count, this.userData.sc); };
@@ -238,7 +254,7 @@ export class Props {
       }
       near.sort((a, b) => a[0] - b[0]);
       for (const [d2, it] of near) {
-        if (d2 < 90 * 90) shc = n + 1;
+        if (d2 < 60 * 60) shc = n + 1;
         e.set(it.tilt, it.rot, it.tilt * 0.5);
         q.setFromEuler(e);
         sc.setScalar(it.s);

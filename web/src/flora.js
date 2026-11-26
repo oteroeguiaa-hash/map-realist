@@ -161,6 +161,7 @@ export class Flora {
   constructor(renderer, scene, terrain, world, rects, q) {
     this.renderer = renderer; this.scene = scene; this.T = terrain; this.world = world; this.rects = rects;
     this.lastCam = new V3(1e9, 0, 0); this.lastQ = new THREE.Quaternion();
+    this.wobbles = new Map();
     this.setQuality(q);
     this.types = [];
   }
@@ -280,13 +281,16 @@ export class Flora {
     const nearPier = (x, z) => { const dx = pier.x1 - pier.x0, dz = pier.z1 - pier.z0, L2 = dx * dx + dz * dz; const t = clamp(((x - pier.x0) * dx + (z - pier.z0) * dz) / L2, -0.6, 1); return Math.hypot(x - pier.x0 - dx * t, z - pier.z0 - dz * t) < 14; };
     const choose = (all) => { const list = all.filter((e) => A[e[0]] && e[1] > 0); if (!list.length) return null; const tot = list.reduce((a, b) => a + b[1], 0); let u = rnd() * tot; for (const [k, w] of list) { u -= w; if (u <= 0) return k; } return list[0][0]; };
     const I = { x: [], y: [], z: [], r: [], s: [], t: [], c: [], l: [], ta: [], ax: [], az: [] };
+    // campement et étangs : rien n'y pousse (sauf les berges)
+    const camp = this.world.camp, ponds = this.world.ponds || [];
+    const blocked = (x, z) => (camp && Math.hypot(x - camp.x, z - camp.z) < camp.r + 3) || ponds.some((p) => T.height(x, z) < p.level + 0.1 && Math.hypot(x - p.x, z - p.z) < p.r * 1.6);
     const nrm = new V3();
     let trees = 0, bushes = 0;
     const TC = 4.6;
     for (let gz = -W / 2; gz < W / 2; gz += TC) for (let gx = -W / 2; gx < W / 2; gx += TC) {
       const x = gx + rnd() * TC, z = gz + rnd() * TC, h = T.height(x, z);
       if (h < 0.9 || h > 285) continue;
-      if (T.mask(T.path, x, z) > 0.2 || T.mask(T.clear, x, z) > 0.3 || Math.hypot(x - spawn.x, z - spawn.z) < 16 || nearPier(x, z)) continue;
+      if (T.mask(T.path, x, z) > 0.2 || T.mask(T.clear, x, z) > 0.3 || Math.hypot(x - spawn.x, z - spawn.z) < 16 || nearPier(x, z) || blocked(x, z)) continue;
       const wet = T.mask(T.wet, x, z);
       T.normal(x, z, nrm, 2);
       const slope = 1 - nrm.y, nz = vnoise(x * 0.012, z * 0.012), nz2 = vnoise(x * 0.05 + 9, z * 0.05 - 3);
@@ -320,7 +324,7 @@ export class Flora {
     for (let gz = -W / 2; gz < W / 2; gz += BC) for (let gx = -W / 2; gx < W / 2; gx += BC) {
       const x = gx + rnd() * BC, z = gz + rnd() * BC, h = T.height(x, z);
       if (h < 0.7 || h > 270) continue;
-      if (T.mask(T.path, x, z) > 0.2 || Math.hypot(x - spawn.x, z - spawn.z) < 9 || nearPier(x, z)) continue;
+      if (T.mask(T.path, x, z) > 0.2 || Math.hypot(x - spawn.x, z - spawn.z) < 9 || nearPier(x, z) || blocked(x, z)) continue;
       const edge = nearRoad(x, z) > 0.3;
       const clear = T.mask(T.clear, x, z), wet = T.mask(T.wet, x, z);
       T.normal(x, z, nrm, 2);
@@ -545,11 +549,24 @@ export class Flora {
     this.impBush = mkLayer(Math.min(this.count.bushes, 60000) + 16, FADE_BUSH, 0);
   }
 
+  // un arbre percuté oscille puis se stabilise
+  wobble(i, dx, dz, amp) { const l = Math.hypot(dx, dz) || 1; this.wobbles.set(i, { t: 0, x: dz / l, z: -dx / l, amp, a: 0 }); }
+  // buissons et fougères sous le buggy : arrachés
+  bushesNear(x, z, r) {
+    const W = this.T.W, GC = this.GC, GN = this.GN, I = this.I, out = [];
+    const cx = clamp(Math.floor((x + W / 2) / GC), 0, GN - 1), cz = clamp(Math.floor((z + W / 2) / GC), 0, GN - 1);
+    for (let j = Math.max(0, cz - 1); j <= Math.min(GN - 1, cz + 1); j++) for (let k = Math.max(0, cx - 1); k <= Math.min(GN - 1, cx + 1); k++) for (const i of this.cells[j * GN + k]) {
+      if (this.dead[i] || this.types[I.t[i]].cat !== 'bush') continue;
+      if (Math.hypot(I.x[i] - x, I.z[i] - z) < r) out.push(i);
+    }
+    return out;
+  }
   update(camera, dt) {
     const cam = camera.position;
     const moved = cam.distanceToSquared(this.lastCam) > 4 || camera.quaternion.angleTo(this.lastQ) > 0.1;
     this._t = (this._t || 0) + dt;
-    if (!moved && this._t < 0.5) return;
+    for (const [i, w] of this.wobbles) { w.t += dt; w.a = w.amp * Math.exp(-w.t * 2.2) * Math.cos(w.t * 8); if (w.t > 3) this.wobbles.delete(i); }
+    if (!moved && this._t < 0.5 && !this.wobbles.size) return;
     this._t = 0;
     this.lastCam.copy(cam); this.lastQ.copy(camera.quaternion);
     const q = this.q, I = this.I, W = this.T.W, GC = this.GC, GN = this.GN;
@@ -603,8 +620,10 @@ export class Flora {
       let sc = 0;
       for (let k = 0; k < n; k++) {
         const i = d[order[k] * 2 + 1], s = I.s[i], r = I.r[i], cs = Math.cos(r) * s, sn = Math.sin(r) * s, o = k * 16;
-        if (I.ta[i] > 0.02) {
-          _q.setFromAxisAngle(_ax.set(I.ax[i], 0, I.az[i]), I.ta[i]).multiply(_q2.setFromAxisAngle(_up, r));
+        const wb = this.wobbles.size ? this.wobbles.get(i) : null;
+        const ta = wb ? wb.a : I.ta[i];
+        if (Math.abs(ta) > 0.002) {
+          _q.setFromAxisAngle(wb ? _ax.set(wb.x, 0, wb.z) : _ax.set(I.ax[i], 0, I.az[i]), ta).multiply(_q2.setFromAxisAngle(_up, r));
           _m.compose(_p.set(I.x[i], I.y[i], I.z[i]), _q, _s.setScalar(s)).toArray(A, o);
         } else {
         A[o] = cs; A[o + 1] = 0; A[o + 2] = -sn; A[o + 3] = 0; A[o + 4] = 0; A[o + 5] = s; A[o + 6] = 0; A[o + 7] = 0;

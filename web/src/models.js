@@ -28,7 +28,7 @@ export const MODEL_SPECS = {
   python: { size: 1.1, measure: 'length' },
   croc: { size: 4.2, measure: 'length' },
   monkey: { size: 0.75, measure: 'height' },
-  crab: { size: 0.32, measure: 'length' },
+  crab: { size: 0.45, measure: 'length' },
   turtle: { size: 1.0, measure: 'length' },
   fishschool: { size: 7, measure: 'max' },
   shark: { size: 4.2, measure: 'max' },

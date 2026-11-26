@@ -70,6 +70,27 @@ const shots = {
     { name: 'c_pier', setup: `G.teleport('ponton');` },
   ],
   spawn: [{ name: 'spawn', setup: '' }],
+  crash: [
+    { name: 'crash_big', setup: `
+      const F=G.veg, I=F.I, b=G.buggy; let best=-1, bd=1e9; for (let i=0;i<I.n;i++){ const t=F.types[I.t[i]]; if(t.name!=='grand arbre'||F.dead[i]) continue; const d=Math.hypot(I.x[i]-G.world.spawn.x,I.z[i]-G.world.spawn.z); if(d<bd){bd=d;best=i;} }
+      const tx=I.x[best], tz=I.z[best]; G.mode='buggy'; G.rig.setMode('chase'); b.place(tx-14, tz, Math.PI/2); b.vel.set(14,0,0);
+      G.__t=0; G.controls.read=()=>({throttle:1,steer:0,brake:0,lookX:0,lookY:0,up:false,down:false,camera:false,reset:false,fast:false});
+      window.__crash=()=>console.warn('vitesse', (b.speed*3.6).toFixed(0), 'dégâts', (b.damage||0).toFixed(2), 'oscillations', F.wobbles.size, 'x', b.pos.x.toFixed(1), 'arbre x', tx.toFixed(1));` , after: `window.__crash(); return 'ok';` },
+    { name: 'crash_small', setup: `
+      const F=G.veg, I=F.I, b=G.buggy; let best=-1, bd=1e9; for (let i=0;i<I.n;i++){ const t=F.types[I.t[i]]; if(F.dead[i]||t.cat!=='tree'||t.h*I.s[i]>=9) continue; const d=Math.hypot(I.x[i]-G.world.spawn.x,I.z[i]-G.world.spawn.z); if(d<bd){bd=d;best=i;} }
+      const tx=I.x[best], tz=I.z[best]; b.damage=0; b.place(tx-14, tz, Math.PI/2); b.vel.set(14,0,0); window.__small=best;`, after: `return 'petit arbre abattu: ' + G.veg.dead[window.__small] + ' chutes: ' + G.lumber.falling.length + ' vitesse ' + (G.buggy.speed*3.6).toFixed(0);` },
+  ],
+  night: [
+    { name: 'n_camp', setup: `G.sky.setHour(20.2); const c=G.world.camp; G.rig.setMode('drone'); G.camera.position.set(c.x+14, G.terrain.height(c.x+14,c.z+10)+5, c.z+10); G.rig.yaw=Math.atan2(-(c.x-G.camera.position.x), -(c.z-G.camera.position.z)); G.rig.pitch=-0.25;` },
+    { name: 'n_torch', setup: `G.rig.setMode('foot'); const P=G.player; for (const p of [...P.pickups]) if (p.name==='torch'||p.name==='binoculars') P.pick(p); P.equip(P.inv.indexOf('torch')); P.torchOn=true; const c=G.world.camp; P.place(c.x+18, c.z+18, 0.8); P.pitch=-0.15;` },
+    { name: 'n_bino', setup: `G.sky.setHour(15); const P=G.player; P.equip(P.inv.indexOf('binoculars')); P.zoomOn=true; P.zoom=8; P.pitch=0.02;` },
+    { name: 'pond', setup: `G.player.zoomOn=false; G.rig.setMode('drone'); const p=G.world.ponds[0]; G.camera.position.set(p.x+p.r*1.6, p.level+4, p.z+p.r*1.2); G.rig.yaw=Math.atan2(-(p.x-G.camera.position.x), -(p.z-G.camera.position.z)); G.rig.pitch=-0.3;` },
+    { name: 'rockybeach', setup: `G.rig.setMode('drone'); const c=G.fauna.list.find(a=>a.name==='crab'); if(c){ G.camera.position.set(c.pos.x+5, c.pos.y+2.2, c.pos.z+5); G.rig.yaw=Math.atan2(-(c.pos.x-G.camera.position.x), -(c.pos.z-G.camera.position.z)); G.rig.pitch=-0.3; }` },
+  ],
+  perfspawn: [{ name: 'perf_spawn', setup: `document.querySelector('[data-q="1"]').click();`, after: `
+    const rows={}; G.scene.traverse(o=>{ if(!o.isMesh||!o.visible) return; let p=o; while(p){ if(!p.visible) return; p=p.parent; } let k=o.name||''; let q=o; while(q && !k){ q=q.parent; k=q&&q.name||''; } k=k.slice(0,18)||o.material.type; const g=o.geometry; const t=(g.index?g.index.count:g.attributes.position.count)/3*(o.isInstancedMesh?o.count:1); rows[k]=rows[k]||[0,0]; rows[k][0]++; rows[k][1]+=t; });
+    const L=[]; G.scene.traverse(o=>{ if(o.isLight&&o.castShadow) L.push(o.type+':'+o.shadow.autoUpdate+'/'+o.shadow.needsUpdate); });
+    return Object.entries(rows).sort((a,b)=>b[1][0]-a[1][0]).slice(0,22).map(([k,v])=>k+' n='+v[0]+' t='+(v[1]|0)).join(' | ')+' || '+L.join(',');` }],
   chop: [
     { name: 'chop_before', setup: `
       try { localStorage.clear(); } catch (e) {}

@@ -7,6 +7,7 @@ import { fitToGround } from './models.js';
 const V3 = THREE.Vector3;
 const EYE = 1.66, RAD = 0.34;
 const TOOLS = { axe: 'la hache', rivelaine: 'la rivelaine' };
+const LABELS = { ...TOOLS, torch: 'la lampe torche', binoculars: 'les jumelles' };
 // rotation exprimée dans le repère du parent (les rotations s'enchaînent sans se mélanger)
 const rotW = (o, x, y, z, a) => o.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new V3(x, y, z), a));
 
@@ -22,6 +23,16 @@ export class Player {
     camera.add(this.vm);
     this.swing = -1;
     this.onHit = null;
+    // lampe torche : projecteur attaché à la caméra (toujours présent, éteint = puissance nulle)
+    this.torchOn = false; this.beamAngle = 0.32;
+    const L = new THREE.SpotLight(0xfff1dc, 0, 60, this.beamAngle, 0.95, 2);
+    L.castShadow = true; L.shadow.mapSize.set(1024, 1024); L.shadow.bias = -0.0006; L.shadow.autoUpdate = false;
+    L.position.set(0.22, -0.22, -0.35);
+    L.target.position.set(0.04, -0.12, -12);
+    camera.add(L); camera.add(L.target);
+    this.torchLight = L;
+    // jumelles
+    this.zoomOn = false; this.zoom = 6;
     this.groundAt = (x, z) => this.T.height(x, z);
   }
 
@@ -35,6 +46,7 @@ export class Player {
   waterLevel(x, z) {
     const p = this.world.waterfall.pool;
     if (Math.hypot(x - p[0], z - p[2]) < this.world.waterfall.poolR) return p[1];
+    for (const q of this.world.ponds || []) if (Math.hypot(x - q.x, z - q.z) < q.r * 1.9 && this.T.height(x, z) < q.level) return q.level;
     return 0;
   }
 
@@ -91,11 +103,40 @@ export class Player {
     o.traverse((m) => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; } });
     return { obj: this.patch(o), len: H };
   }
+  addPickup(name, x, y, z, rotY) {
+    const o = this.bank.instance(name, { measure: 'none' });
+    if (!o) return;
+    this.patch(o);
+    o.position.set(x, y, z); o.rotation.y = rotY;
+    this.scene.add(o);
+    this.pickups.push({ name, obj: o, label: LABELS[name] });
+  }
+  // modèle tenu « tel quel » (taille réelle), orienté vers l'avant
+  heldReal(name) {
+    const o = this.bank.instance(name, { measure: 'none' });
+    const inner = o.children[0];
+    if (name === 'torch') {
+      // l'axe le plus long devient l'axe de visée ; la vitre (verre) vers l'avant
+      inner.updateMatrixWorld(true);
+      const s = new THREE.Box3().setFromObject(inner).getSize(new V3());
+      if (s.x >= s.z) rotW(inner, 0, 1, 0, Math.PI / 2);
+      fitToGround(inner, 0, 'none'); inner.updateMatrixWorld(true);
+      let gz = 0, n = 0;
+      inner.traverse((m) => { if (m.isMesh && /glass/i.test(m.material.name)) { const b = new THREE.Box3().setFromObject(m); gz += (b.min.z + b.max.z) / 2; n++; } });
+      if (n && gz / n > 0) rotW(inner, 0, 1, 0, Math.PI);
+      fitToGround(inner, 0, 'none');
+      inner.position.y -= 0.03;
+    }
+    o.traverse((m) => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; } });
+    return { obj: this.patch(o), len: 0.25 };
+  }
   equip(i) {
     this.equipped = i;
     this.vm.clear();
+    this.zoomOn = false;
     if (i < 0) return;
-    const h = this.held(this.inv[i]);
+    const name = this.inv[i];
+    const h = name === 'torch' || name === 'binoculars' ? this.heldReal(name) : this.held(name);
     this.vm.add(h.obj);
     this.vmLen = h.len;
   }
@@ -103,7 +144,7 @@ export class Player {
     if (!this.inv.length) return null;
     const n = this.equipped + 1;
     this.equip(n >= this.inv.length ? -1 : n);
-    return this.equipped < 0 ? 'Mains libres' : 'En main : ' + TOOLS[this.inv[this.equipped]];
+    return this.equipped < 0 ? 'Mains libres' : 'En main : ' + LABELS[this.inv[this.equipped]];
   }
   nearPickup() {
     let best = null, bd = 2.3;
@@ -120,13 +161,18 @@ export class Player {
     this.equip(this.inv.length - 1);
     return 'Tu as ramassé ' + p.label;
   }
-  strike() { if (this.equipped >= 0 && this.swing < 0) this.swing = 0; }
+  strike() {
+    const tool = this.tool();
+    if (tool === 'torch') { this.torchOn = !this.torchOn; return; }
+    if (tool === 'binoculars') { this.zoomOn = !this.zoomOn; return; } if (this.equipped >= 0 && this.swing < 0) this.swing = 0; }
 
   // ---------- déplacement ----------
   update(dt, inp, extra) {
     const T = this.T;
-    this.yaw -= inp.lookX * 0.0042;
-    this.pitch = clamp(this.pitch - inp.lookY * 0.0036, -1.4, 1.35);
+    // aux jumelles, la visée devient plus fine (sensibilité divisée par le grossissement)
+    const sens = this.zoomOn ? 1 / this.zoom : 1;
+    this.yaw -= inp.lookX * 0.0042 * sens;
+    this.pitch = clamp(this.pitch - inp.lookY * 0.0036 * sens, -1.4, 1.35);
     const fwd = new V3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)), right = new V3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const wish = new V3().addScaledVector(fwd, inp.throttle).addScaledVector(right, inp.steer);
     const mag = Math.min(1, wish.length());
@@ -205,10 +251,22 @@ export class Player {
     this.updateTool(dt, bx, by);
   }
 
+  tool() { return this.equipped >= 0 ? this.inv[this.equipped] : null; }
   updateTool(dt, bx, by) {
-    const vm = this.vm;
-    vm.visible = this.equipped >= 0;
+    const vm = this.vm, tool = this.tool();
+    const lit = tool === 'torch' && this.torchOn;
+    this.torchLight.power = lit ? 1000 : 0; // 1000 lumens
+    this.torchLight.angle = this.beamAngle;
+    this.torchLight.shadow.autoUpdate = lit;
+    if (this.beam) { this.beam.visible = lit; const r = Math.tan(this.beamAngle) * 14; this.beam.scale.set(r, r, 14); }
+    if (tool !== 'binoculars') this.zoomOn = false;
+    vm.visible = this.equipped >= 0 && !this.zoomOn;
     if (!vm.visible) return;
+    if (tool === 'torch' || tool === 'binoculars') {
+      vm.position.set(0.24 + bx * 0.6, -0.26 + by * 0.6, -0.42);
+      vm.rotation.set(tool === 'torch' ? 0.05 : -0.2, tool === 'torch' ? 0.06 : 0, 0);
+      return;
+    }
     let rx = -0.45, ry = -0.25, rz = -0.25, px = 0.36 + bx * 0.6, py = -0.47 + by * 0.6, pz = -0.6;
     if (this.swing >= 0) {
       this.swing += dt / 0.55;

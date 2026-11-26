@@ -13,6 +13,9 @@ import { Fauna } from './fauna.js';
 import { Roads, spurFromSpawn, stampRoad } from './roads.js';
 import { Lumber } from './lumber.js';
 import { GrassField } from './grassfield.js';
+import { chooseSites, carvePonds } from './sites.js';
+import { Ponds } from './ponds.js';
+import { Camp, makeBeam } from './camp.js';
 import { Builder, PIECES } from './build.js';
 
 // sauvegarde locale (arbres abattus, bois, constructions) : retrouvée au retour sur ce téléphone
@@ -39,7 +42,7 @@ const QUALITY = [
 
 // ordre de chargement des modèles .glb : végétation d'abord, puis rochers, véhicules, outils, animaux
 const GLB_ORDER = ['palm', 'plants', 'fern2', 'grass2', 'othonna', 'roots',
-  'boulder', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'buggy', 'plane', 'axe', 'rivelaine',
+  'barrier', 'sconce', 'searchlight', 'candle', 'torch', 'binoculars', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'buggy', 'plane', 'axe', 'rivelaine',
   'crab', 'seagull', 'parrot', 'aracari', 'parrots', 'monkey', 'boar', 'tiger', 'jaguar', 'komodo', 'python', 'turtle', 'fishschool', 'shark', 'croc'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -85,6 +88,10 @@ async function boot() {
     const spur = spurFromSpawn(world);
     if (spur) stampRoad(data, spur);
     const allRoads = world.roads.concat(spur ? [spur] : []);
+    // lieux : campement, étangs de jungle (creusés dans le relief)
+    const sites = chooseSites(data, world);
+    world.camp = sites.camp; world.ponds = sites.ponds;
+    carvePonds(data, world.ponds);
     data.addRelief(world);
     data.makeTextures();
     G.terrain = data;
@@ -161,10 +168,14 @@ async function boot() {
 
     ui.progress(0.78, 'Herbe, rochers, avions…');
     await nextFrame();
-    await waitModels(['boulder', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'plane', 'buggy'], 20000);
+    await waitModels(['nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'plane', 'buggy', 'barrier', 'sconce', 'searchlight', 'candle', 'torch', 'binoculars'], 25000);
     const props = new Props(scene, data, world, null, bank);
     await props.init(ASSETS);
     G.props = props;
+    const ponds = new Ponds(scene, data, world.ponds || []);
+    G.ponds = ponds;
+    const camp = new Camp(scene, data, world, bank, props, Q().veg);
+    G.camp = camp;
     const roads = new Roads(scene, data, world);
     await roads.init(ASSETS, allRoads);
     G.roads = roads;
@@ -176,6 +187,12 @@ async function boot() {
     G.buggy = buggy;
     const player = new Player(scene, camera, data, world, veg, props, bank);
     G.player = player;
+    // lampe torche et jumelles posées sur la table du campement
+    if (camp.tableTop) { const t = camp.tableTop; player.addPickup('torch', t.x - 0.35, t.y, t.z - 0.1, 0.4); player.addPickup('binoculars', t.x + 0.05, t.y, t.z + 0.12, -0.3); }
+    const torchBeam = makeBeam(14);
+    torchBeam.position.copy(player.torchLight.position);
+    camera.add(torchBeam);
+    player.beam = torchBeam;
     const fauna = new Fauna(scene, data, world, veg, bank);
     G.fauna = fauna;
     // abattage et construction
@@ -212,6 +229,26 @@ async function boot() {
       sound.footstep(kind, clamp(v / 4, 0.4, 1.2));
     };
     buggy.ground = groundAt; buggy.groundNormal = groundNormal; buggy.onBuilt = onBuilt;
+    // chocs du buggy : petits arbres arrachés, grands arbres qui plient un peu, arrêt net
+    buggy.onTree = (c, speed, vel) => {
+      if (veg.dead[c.i]) return 'ripped';
+      const I = veg.I, ty = veg.types[I.t[c.i]];
+      if (ty.h * I.s[c.i] < 9 && speed > 4) {
+        const rec = lumber.fell(c.i, vel.x, vel.z, null);
+        rec.w = clamp(speed * 0.12, 0.3, 2.5);
+        fx.burst(new THREE.Vector3(c.x, data.height(c.x, c.z) + 1, c.z), 30, [0.2, 0.34, 0.1], 4, 3, 0.08, 1.6);
+        sound.crash(0.6);
+        return 'ripped';
+      }
+      veg.wobble(c.i, vel.x, vel.z, Math.min(speed * 0.012, 0.12));
+      return null;
+    };
+    buggy.onCrash = (c, speed) => {
+      sound.crash(clamp(speed / 15, 0.3, 1));
+      fx.burst(new THREE.Vector3(c.x, buggy.pos.y + 0.6, c.z), 18, [0.55, 0.45, 0.32], 3, 2.5, 0.07, 1.0);
+      if (speed > 8) ui.toast('Gros choc !');
+    };
+    let ripT = 0;
     player.onHit = (p, kind, tree) => {
       if (kind === 'tree' && tree) {
         fx.burst(p, 14, [0.78, 0.66, 0.46], 2.2, 2.5, 0.06, 0.9); // copeaux clairs
@@ -247,6 +284,8 @@ async function boot() {
     ui.onPlace = (k) => teleport(k);
     ui.onCamera = () => { rig.cycle(G.mode === 'foot'); ui.toast(rig.label()); };
     ui.onReset = () => buggy.reset();
+    ui.onZoom = (z) => { player.zoom = clamp(z, 1, 20); };
+    ui.onBeam = (deg) => { player.beamAngle = deg * Math.PI / 180; };
     ui.onStart = () => { sound.start(); requestWakeLock(); };
 
     function teleport(k) {
@@ -325,6 +364,9 @@ async function boot() {
       if (player.pos.distanceTo(buggy.pos) < 3.4) return 'Monter dans le buggy';
       const p = player.nearPickup();
       if (p) return 'Ramasser ' + p.label;
+      const tool = player.tool();
+      if (tool === 'torch') return player.torchOn ? 'Éteindre la lampe' : 'Allumer la lampe';
+      if (tool === 'binoculars') return player.zoomOn ? 'Ranger les jumelles' : 'Jumelles';
       if (player.equipped >= 0) return 'Frapper';
       return null;
     }
@@ -333,7 +375,7 @@ async function boot() {
       if (label === 'Descendre') exitBuggy();
       else if (label === 'Monter dans le buggy') enterBuggy();
       else if (label.startsWith('Ramasser')) { const p = player.nearPickup(); if (p) ui.toast(player.pick(p) + ' · bouton Outil pour changer'); }
-      else if (label === 'Frapper') player.strike();
+      else if (label === 'Frapper' || /lampe|umelles/.test(label)) player.strike();
       else if (label.startsWith('Poser')) {
         const sh = builder.confirm();
         if (sh) { lumber.wood -= PIECES[sh.kind].cost; save(); ui.toast(`${PIECES[sh.kind].label} construit · il te reste ${lumber.wood} bûches`); }
@@ -403,6 +445,15 @@ async function boot() {
       buggy.engineOn = G.mode === 'buggy' ? 1 : 0;
       if (G.mode === 'buggy') {
         buggy.update(dt, rig.mode !== 'drone' ? input : IDLE);
+        // fougères et buissons arrachés, animaux projetés
+        ripT += dt;
+        if (ripT > 0.1 && Math.abs(buggy.speed) > 3) {
+          ripT = 0;
+          const list = veg.bushesNear(buggy.pos.x, buggy.pos.z, 1.7);
+          for (const i of list) { veg.dead[i] = 1; fx.burst(new THREE.Vector3(veg.I.x[i], veg.I.y[i] + 0.4, veg.I.z[i]), 10, [0.22, 0.36, 0.12], 2.5, 2.5, 0.07, 1.2); }
+          if (list.length) veg.refresh();
+          if (fauna.hitBy(buggy.pos, buggy.vel, 1.6)) sound.crash(0.4);
+        }
         rig.update(dt, input, buggy);
       } else {
         buggy.update(dt, IDLE);
@@ -416,8 +467,10 @@ async function boot() {
       }
       // champ de vision qui s'élargit avec la vitesse (sensation de vitesse), et en sprint
       const fovAdd = rig.mode === 'chase' && G.mode === 'buggy' ? clamp((Math.abs(buggy.speed) - 8) * 0.35, 0, 11) : G.mode === 'foot' && rig.mode === 'foot' && player.speed > 4 ? 4 : 0;
-      const fovT = G.baseFov + fovAdd;
-      if (Math.abs(camera.fov - fovT) > 0.01) { camera.fov = lerp(camera.fov, fovT, 1 - Math.exp(-dt * 3)); camera.updateProjectionMatrix(); }
+      let fovT = G.baseFov + fovAdd;
+      if (G.mode === 'foot' && player.zoomOn) fovT = G.baseFov / player.zoom;
+      if (Math.abs(camera.fov - fovT) > 0.01) { camera.fov = lerp(camera.fov, fovT, 1 - Math.exp(-dt * (player.zoomOn ? 10 : 3))); camera.updateProjectionMatrix(); }
+      ui.optics(G.mode === 'foot' && player.zoomOn, player.zoom, G.mode === 'foot' && player.tool() === 'torch');
       U.uCamPos.value.copy(camera.position);
       // ciel, lumière
       const sunMoved = sky.update(dt, scene) || sunPrev.distanceToSquared(U.uSunDir.value) > 1e-6;
@@ -454,18 +507,24 @@ async function boot() {
       sun.position.copy(shadowCenter).addScaledVector(lightDir, 450);
       sun.target.position.copy(shadowCenter);
       sc.updateProjectionMatrix();
+      const dayK2 = clamp(U.uSunDir.value.y * 5 + 0.2, 0, 1);
       // exposition automatique
       const sunL = U.uSunColor.value.r * 0.21 + U.uSunColor.value.g * 0.72 + U.uSunColor.value.b * 0.07;
       const ambL = U.uSkyAmb.value.r * 0.21 + U.uSkyAmb.value.g * 0.72 + U.uSkyAmb.value.b * 0.07;
       const refE = sunL * Math.max(sd.y, 0.12) * (0.35 + 0.65 * (1 - sky.weather * 0.6)) + ambL * Math.PI + hemi.intensity * 0.6;
       const targetExp = clamp(5.0 / Math.max(refE, 1.5), 0.35, 2.6);
-      G.expo = G.frame < 3 ? targetExp : lerp(G.expo, targetExp, 1 - Math.exp(-dt * 1.5));
+      // les yeux s'adaptent aussi à la lampe torche allumée (sinon tout est ébloui la nuit)
+      const torchLit = G.mode === 'foot' && player.tool() === 'torch' && player.torchOn;
+      const expT = torchLit ? Math.min(targetExp, 0.08 + 0.9 * dayK2) : targetExp;
+      G.expo = G.frame < 3 ? expT : lerp(G.expo, expT, 1 - Math.exp(-dt * 1.5));
       // monde
       terrain.update(camera);
       veg.update(camera, dt);
       water.update(camera, sky.weather);
       props.update(camera, dt);
       roads.update(camera);
+      camp.update(dt, camera.position, U.uSunDir.value.y < 0.1);
+      torchBeam.material.uniforms.uStrength.value = 0.02 + 0.08 * (1 - dayK2);
       grassField.update(camera);
       lumber.update(dt);
       sea.update(dt, camera);

@@ -208,7 +208,7 @@ export class Buggy {
     this.tracks && this.tracks.breakAll(this.wheels);
     this.updateVisual(0);
   }
-  reset() { this.place(this.safe.x, this.safe.z, this.safe.h); }
+  reset() { this.damage = 0; this.place(this.safe.x, this.safe.z, this.safe.h); }
 
   surfaceAt(x, z, h) {
     const T = this.T;
@@ -413,9 +413,19 @@ export class Buggy {
         const dx = px - c.x, dz = pz - c.z, d = Math.hypot(dx, dz), R = c.r + 0.92;
         if (d < R && d > 1e-4) {
           const nx = dx / d, nz = dz / d, pen = R - d;
-          this.pos.x += nx * pen; this.pos.z += nz * pen;
           const vn = this.vel.x * nx + this.vel.z * nz;
-          if (vn < 0) { this.vel.x -= nx * vn * 1.25; this.vel.z -= nz * vn * 1.25; this.angVel.y *= 0.7; this.bump = Math.max(this.bump || 0, -vn); }
+          // petit arbre percuté vite : il est arraché, le buggy passe en perdant de la vitesse
+          if (c.i !== undefined && vn < -4 && this.onTree && this.onTree(c, -vn, this.vel) === 'ripped') { this.vel.multiplyScalar(0.7); continue; }
+          this.pos.x += nx * pen; this.pos.z += nz * pen;
+          if (vn < 0) {
+            if (vn < -3) {
+              // choc frontal : arrêt net, la caisse encaisse (légère déformation)
+              this.vel.multiplyScalar(0.06); this.angVel.multiplyScalar(0.3);
+              this.damage = Math.min(1, (this.damage || 0) + Math.min(-vn / 25, 0.35));
+              this.onCrash && this.onCrash(c, -vn);
+            } else { this.vel.x -= nx * vn * 1.25; this.vel.z -= nz * vn * 1.25; this.angVel.y *= 0.7; }
+            this.bump = Math.max(this.bump || 0, -vn);
+          }
         }
       }
     }
@@ -428,6 +438,8 @@ export class Buggy {
     const f = new V3(0, 0, 1).applyQuaternion(this.quat);
     this.heading = Math.atan2(f.x, f.z);
     if (this.glbWheels) {
+      const dmg = this.damage || 0, mdl = this.group.children[0];
+      if (mdl) { mdl.scale.set(1 + dmg * 0.02, 1 - dmg * 0.03, 1 - dmg * 0.07); mdl.rotation.set(dmg * 0.05, dmg * 0.04, -dmg * 0.03); }
       for (const o of this.glbWheels) {
         const w = this.wheels[o.i];
         const ang = ((w.contact ? (w.vlong || 0) : this.speed) + (w.spinX || 0)) / this.WR;

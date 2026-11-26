@@ -45,7 +45,6 @@ const MODELS = {
   parrots: { src: 'parrots_of_the_caribbean.glb', tex: 512, kind: 'animal' },
   seagull: { src: 'seagull.glb', tex: 512, kind: 'animal' },
   // décor Poly Haven (CC0) fourni en .gltf.zip ; tailles réelles en mètres
-  boulder: { zip: 'boulder_01_2k.gltf.zip', tex: 1024, tris: 1600, err: 0.02, sloppy: true, kind: 'decor' },
   trunk2: { zip: 'dead_tree_trunk_02_2k.gltf.zip', tex: 1024, tris: 1600, err: 0.02, kind: 'decor' },
   fern2: { zip: 'fern_02_4k.gltf.zip', tex: 1024, tris: 3600, err: 0.01, kind: 'veg', alpha: 'fern_02' },
   grass2: { zip: 'grass_medium_01_4k.gltf.zip', tex: 1024, tris: 7000, err: 0.01, kind: 'veg', alpha: 'grass_medium_01' },
@@ -57,6 +56,13 @@ const MODELS = {
   rockface: { zip: 'rock_face_02_2k.gltf.zip', tex: 1024, tris: 1800, err: 0.02, kind: 'decor' },
   mossrocks: { zip: 'rock_moss_set_02_4k.gltf.zip', tex: 1024, tris: 6000, err: 0.02, kind: 'decor' },
   roots: { zip: 'root_cluster_01_2k.gltf.zip', tex: 1024, tris: 3500, err: 0.02, kind: 'decor' },
+  // accessoires du campement : géométrie d'origine conservée à 100 % (aucune simplification)
+  torch: { zip: 'small_plastic_torch_2k.gltf.zip', tex: 1024, kind: 'prop', noGeometryChange: true },
+  searchlight: { zip: 'portable_searchlight_4k.gltf.zip', tex: 1024, kind: 'prop', noGeometryChange: true },
+  candle: { zip: 'wooden_candlestick_1k.gltf.zip', tex: 1024, kind: 'prop', noGeometryChange: true },
+  barrier: { zip: 'concrete_road_barrier_02_1k.gltf.zip', tex: 1024, kind: 'prop', noGeometryChange: true },
+  binoculars: { zip: 'vintage_binocular_2k.gltf.zip', tex: 1024, kind: 'prop', noGeometryChange: true },
+  sconce: { zip: 'industrial_wall_sconce_2k.gltf.zip', tex: 1024, kind: 'prop', noGeometryChange: true },
   sandrocks: { zip: 'sand_rocks_small_01_1k.gltf.zip', tex: 1024, tris: 4000, err: 0.03, kind: 'decor' },
 };
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'prepglb-'));
@@ -179,7 +185,7 @@ for (const [name, cfg] of Object.entries(MODELS)) {
   if (root.listAnimations().length) await doc.transform(resample({ tolerance: 1e-4 }));
   await doc.transform(prune());
   // compression géométrie + animations (EXT_meshopt_compression, décodée dans le navigateur)
-  await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+  await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium', ...(cfg.noGeometryChange ? { quantizePosition: 16, quantizeNormal: 12, quantizeTexcoord: 16 } : {}) }));
   const glb = await io.writeBinary(doc);
   const wrapped = JSON.stringify({ format: 'base64', bytes: glb.byteLength, data: Buffer.from(glb).toString('base64') });
   fs.writeFileSync(path.join(OUT, `${name}.data.json`), wrapped);

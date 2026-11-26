@@ -74,6 +74,12 @@
   #droneBtns { display: flex; gap: 10px; }
   #toast { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translate(-50%, -8px); max-width: min(560px, calc(100% - 140px)); padding: 9px 14px; border-radius: 12px; background: var(--glass-strong); font-size: 13px; line-height: 1.35; text-align: center; opacity: 0; transition: opacity .3s, transform .3s; pointer-events: none; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  /* jumelles : deux optiques rondes, bords adoucis, le reste masqué */
+  #bino { position: absolute; inset: 0; pointer-events: none !important; }
+  #zoomBar { position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 12px; }
+  #zoomV { font-family: var(--display); font-size: 22px; min-width: 3.2ch; text-align: center; font-variant-numeric: tabular-nums; }
+  #beamBar { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px; border-radius: 999px; background: var(--glass); font-family: var(--display); letter-spacing: .1em; text-transform: uppercase; font-size: 13px; }
+  #beamBar input { width: min(36vw, 200px); }
 
   /* menu */
   #menu { position: absolute; z-index: 10; top: 0; right: 0; bottom: 0; width: min(380px, 100%); overflow-y: auto; background: var(--glass-strong); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-left: 1px solid var(--line);
@@ -116,6 +122,19 @@
       <button id="bBrake" class="pill" hidden>Frein</button>
     </div>
     <div id="toast" role="status"></div>
+    <svg id="bino" hidden aria-hidden="true" width="100%" height="100%">
+      <defs>
+        <radialGradient id="lensG"><stop offset="0.86" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>
+        <mask id="binoM"><rect width="100%" height="100%" fill="#fff"/><circle id="lensL" fill="url(#lensG)"/><circle id="lensR" fill="url(#lensG)"/></mask>
+      </defs>
+      <rect width="100%" height="100%" fill="#000" mask="url(#binoM)"/>
+    </svg>
+    <div id="zoomBar" hidden>
+      <button id="bZoomOut" class="round" aria-label="Dézoomer">−</button>
+      <b id="zoomV">6×</b>
+      <button id="bZoomIn" class="round" aria-label="Zoomer">+</button>
+    </div>
+    <label id="beamBar" hidden><span>Faisceau</span><input id="sBeam" type="range" min="6" max="45" step="1" value="18" aria-label="Largeur du faisceau de la lampe"></label>
   </div>
 
   <aside id="menu" hidden aria-label="Réglages">

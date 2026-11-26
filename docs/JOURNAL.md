@@ -78,3 +78,15 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Touffes d'herbe (grass_medium_01) et fougères partout autour du joueur, penchées vers le bas des pentes ; le vent couche les petites plantes.
 - Animaux : environ 330 (tigres 14, jaguars 14, sangliers 30, singes 60, crabes 40, oiseaux 84…), avec leurs cris synthétisés (singes, perroquets, mouettes, tigre, sanglier, crocodile, sifflements), placés à gauche/droite selon leur position.
 - Mesure (Chromium logiciel, Moyen, jungle vue d'en haut) : 1,65 M triangles ombres comprises, 171 appels de dessin ; ~420 appels près du départ (animaux).
+
+## 26/11/2026 — Démo web : campement éclairé, lampe, jumelles, étangs, chocs du buggy
+
+- Fluidité : les animaux ne sont plus tous affichés ; ~150 animaux sont recyclés autour du joueur (ceux qui sont loin réapparaissent hors de vue). Les modèles sans squelette sont fusionnés par matériau (crabes : 30 appels de dessin → 1). Départ en Moyen : 973 → 258 appels.
+- Relief : petites cuvettes irrégulières ici et là. Criques rocheuses : rochers et galets sur le sable, crabes regroupés autour.
+- Étangs de jungle creusés dans le relief (7), eau ambrée/thé qui fonce avec la profondeur, petites vagues, découpée par le sol (ne dépasse jamais) ; groupes de 4 crocodiles.
+- Buggy : arrêt net contre un gros arbre avec légère déformation de la caisse, l'arbre oscille ; petits arbres arrachés, fougères/buissons écrasés, animaux projetés.
+- Campement près du départ : 18 barrières en béton (collisions, animaux interdits), 2 appliques murales sur poteaux, projecteur 20 000 lm sur trépied avec faisceau volumétrique, table et bougeoir (flamme qui vacille). Ombres pour toutes ces lumières (sauf qualité Basse), mises à jour périodiquement.
+- Lampe torche (1000 lm, faisceau réglable 6–45°, faisceau volumétrique doux) et jumelles (zoom 1× à 20×, masque à deux optiques, visée plus fine) à ramasser sur la table du campement.
+- Les 6 accessoires gardent 100 % de leurs triangles (bougeoir : 213 000 ; barrière : 24 000 chacune) ; le campement n'est affiché qu'à moins de 90 m.
+- Mesure (Chromium logiciel, Moyen, départ) : 1,98 M triangles, 258 appels de dessin.
+- Pas encore fait : vagues et écume sur la mer, vrai monde sous-marin.
