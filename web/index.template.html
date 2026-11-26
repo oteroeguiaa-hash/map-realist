@@ -1,0 +1,158 @@
+<title>Map Realist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+  /* Interface de jeu : une seule ambiance sombre et translucide par-dessus la vue 3D */
+  :root {
+    color-scheme: dark;
+    --ink: #f3efe6;
+    --ink-dim: #b9c3bf;
+    --glass: rgba(10, 22, 24, 0.55);
+    --glass-strong: rgba(9, 20, 22, 0.86);
+    --line: rgba(243, 239, 230, 0.16);
+    --lagoon: #3fd0c4;
+    --ember: #ff7a3d;
+    --ground: #0b1517;
+    --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+    --text: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  [hidden] { display: none !important; }
+  html { height: 100%; box-sizing: border-box; background: var(--ground); }
+  body { height: 100%; margin: 0; overflow: hidden; background: var(--ground); color: var(--ink); font-family: var(--text); }
+  #app { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: var(--ground); }
+  button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--lagoon); outline-offset: 2px; }
+
+  /* écran de chargement */
+  #load { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+    background: radial-gradient(120% 90% at 70% 10%, #123536 0%, #0b1517 55%, #070d0e 100%); transition: opacity .7s ease; }
+  #load.ready { background: linear-gradient(180deg, rgba(7, 13, 14, 0.25), rgba(7, 13, 14, 0.72)); }
+  #load.gone { opacity: 0; pointer-events: none; }
+  .card { width: min(520px, 100%); display: grid; gap: 14px; }
+  .eyebrow { font-family: var(--display); font-weight: 600; letter-spacing: .22em; text-transform: uppercase; font-size: 12px; color: var(--lagoon); }
+  h1 { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(44px, 11vw, 84px); line-height: .88; letter-spacing: .01em; text-wrap: balance; text-transform: uppercase; }
+  h1 span { color: var(--ember); }
+  .lede { margin: 0; color: var(--ink-dim); font-size: 15px; line-height: 1.45; max-width: 46ch; }
+  .track { height: 4px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  #bar { height: 100%; background: linear-gradient(90deg, var(--lagoon), #b7f5e6); transform-origin: left; transform: scaleX(.02); transition: transform .4s ease; }
+  #status { font-size: 13px; color: var(--ink-dim); min-height: 1.3em; font-variant-numeric: tabular-nums; }
+  #load.err #status { color: #ffb4a0; }
+  #bPlay { justify-self: start; border: 0; border-radius: 999px; padding: 13px 30px; background: var(--ember); color: #1a0d06; font-family: var(--display); font-weight: 700; font-size: 20px; letter-spacing: .06em; text-transform: uppercase; }
+  #bPlay:disabled { background: var(--line); color: var(--ink-dim); cursor: default; }
+  .hint { font-size: 12px; color: var(--ink-dim); }
+
+  /* tableau de bord */
+  #hud { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  #speedo { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); left: max(14px, env(safe-area-inset-left, 0px)); pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,.45); }
+  #spd { font-family: var(--display); font-weight: 600; font-size: 38px; line-height: 1; font-variant-numeric: tabular-nums; }
+  #speedo small { font-family: var(--display); font-size: 15px; margin-left: 4px; color: var(--ink-dim); letter-spacing: .06em; }
+  #mode { font-family: var(--display); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--lagoon); }
+  #fps { position: absolute; top: calc(64px + env(safe-area-inset-top, 0px)); left: max(14px, env(safe-area-inset-left, 0px)); font-size: 12px; color: var(--ink-dim); font-variant-numeric: tabular-nums; pointer-events: none; }
+  .round { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: grid; place-items: center; }
+  .pill { border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 999px; padding: 10px 16px; font-family: var(--display); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; font-size: 14px; }
+  #bMenu { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); }
+  #bMenu svg { width: 20px; height: 20px; }
+  #stick { position: absolute; left: max(22px, calc(env(safe-area-inset-left, 0px) + 12px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); width: 132px; height: 132px; border-radius: 50%; border: 1px solid var(--line); background: radial-gradient(circle, rgba(255,255,255,.06), rgba(10,22,24,.45)); touch-action: none; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(243,239,230,.85); box-shadow: 0 2px 10px rgba(0,0,0,.35); pointer-events: none; }
+  #rbtns { position: absolute; right: max(18px, calc(env(safe-area-inset-right, 0px) + 10px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  #bBrake { padding: 18px 22px; font-size: 16px; }
+  #droneBtns { display: flex; gap: 10px; }
+  #toast { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translate(-50%, -8px); max-width: min(560px, calc(100% - 140px)); padding: 9px 14px; border-radius: 12px; background: var(--glass-strong); font-size: 13px; line-height: 1.35; text-align: center; opacity: 0; transition: opacity .3s, transform .3s; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* menu */
+  #menu { position: absolute; z-index: 10; top: 0; right: 0; bottom: 0; width: min(380px, 100%); overflow-y: auto; background: var(--glass-strong); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-left: 1px solid var(--line);
+    padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)); padding-left: 18px; padding-right: max(18px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 18px; }
+  #menu header { display: flex; align-items: center; justify-content: space-between; }
+  #menu h2 { margin: 0; font-family: var(--display); font-size: 24px; letter-spacing: .06em; text-transform: uppercase; }
+  .grp { display: grid; gap: 8px; }
+  .lab { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--display); letter-spacing: .14em; text-transform: uppercase; font-size: 12px; color: var(--ink-dim); }
+  .lab b { font-family: var(--text); font-weight: 600; letter-spacing: 0; text-transform: none; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--lagoon); height: 28px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: rgba(255,255,255,.04); border-radius: 999px; padding: 8px 13px; font-size: 14px; }
+  .chip[aria-pressed="true"] { background: var(--lagoon); color: #062320; border-color: transparent; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-dim); }
+  .note { font-size: 12px; color: var(--ink-dim); line-height: 1.45; margin: 0; }
+</style>
+
+<div id="app">
+  <canvas id="c" aria-label="Vue 3D de l'île"></canvas>
+
+  <div id="hud" hidden>
+    <div id="speedo"><span id="spd">0</span><small>km/h</small><div id="mode">Buggy</div></div>
+    <div id="fps" hidden></div>
+    <button id="bMenu" class="round" aria-label="Ouvrir le menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <div id="stick" aria-label="Joystick : avancer, reculer, tourner"><div id="knob"></div></div>
+    <div id="rbtns">
+      <div id="droneBtns" hidden>
+        <button id="bUp" class="round" aria-label="Monter">▲</button>
+        <button id="bDown" class="round" aria-label="Descendre">▼</button>
+      </div>
+      <button id="bCam" class="pill">Caméra</button>
+      <button id="bBrake" class="pill">Frein</button>
+    </div>
+    <div id="toast" role="status"></div>
+  </div>
+
+  <aside id="menu" hidden aria-label="Réglages">
+    <header>
+      <h2>Réglages</h2>
+      <button id="bClose" class="round" aria-label="Fermer le menu">✕</button>
+    </header>
+    <div class="grp">
+      <div class="lab">Heure <b id="vHour"></b></div>
+      <input id="sHour" type="range" min="5.6" max="19.4" step="0.05" aria-label="Heure de la journée">
+    </div>
+    <div class="grp">
+      <div class="lab">Météo <b id="vWeather"></b></div>
+      <input id="sWeather" type="range" min="0" max="1" step="0.01" aria-label="Météo">
+    </div>
+    <div class="grp">
+      <div class="lab">Aller à</div>
+      <div class="chips">
+        <button class="chip" data-place="plage">Plage</button>
+        <button class="chip" data-place="cascade">Cascade</button>
+        <button class="chip" data-place="volcan">Volcan</button>
+        <button class="chip" data-place="piste">Avion de brousse</button>
+        <button class="chip" data-place="ponton">Hydravion</button>
+        <button class="chip" data-place="lagon">Sous le lagon</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lab">Qualité graphique</div>
+      <div class="chips">
+        <button class="chip" data-q="-1" aria-pressed="true">Auto</button>
+        <button class="chip" data-q="0" aria-pressed="false">Bas</button>
+        <button class="chip" data-q="1" aria-pressed="false">Moyen</button>
+        <button class="chip" data-q="2" aria-pressed="false">Élevé</button>
+        <button class="chip" data-q="3" aria-pressed="false">Ultra</button>
+      </div>
+      <label class="row"><input id="tFps" type="checkbox"> Afficher les images par seconde</label>
+    </div>
+    <div class="grp">
+      <button id="bReset" class="pill">Remettre le buggy sur ses roues</button>
+      <p class="note">Clavier : flèches ou ZQSD pour conduire, espace pour freiner, C pour la caméra, R pour replacer le buggy. En caméra libre, E et A pour monter et descendre.</p>
+    </div>
+  </aside>
+
+  <div id="load">
+    <div class="card">
+      <div class="eyebrow">Démo temps réel · île volcanique</div>
+      <h1>Map <span>Realist</span></h1>
+      <p class="lede">Une île tropicale générée de A à Z : volcan, cascade de 30 m, lagon transparent, 100 types d'arbres et 100 types de buissons. Monte dans le buggy et explore.</p>
+      <div class="track"><div id="bar"></div></div>
+      <div id="status">Démarrage…</div>
+      <button id="bPlay" disabled>Jouer</button>
+      <div class="hint">Plus beau en mode paysage. Le son démarre quand tu appuies sur Jouer.</div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" } }</script>
+<script type="module">/*BUNDLE*/</script>

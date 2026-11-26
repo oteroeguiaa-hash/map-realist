@@ -1,0 +1,13 @@
+{
+  "name": "map-realist-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.24.0",
+    "meshoptimizer": "^0.22.0",
+    "three": "^0.170.0"
+  }
+}

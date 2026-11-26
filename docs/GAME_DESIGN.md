@@ -122,6 +122,7 @@ Des photos réelles d'îles volcaniques tropicales (Polynésie française, Hawa�
 
 ### Bibliothèque de modèles
 
+- Précision du joueur : il s'agit de **100 types** différents ; chaque type est ensuite placé en **milliers, voire dizaines de milliers d'exemplaires**.
 - **≥ 100 modèles différents d'arbres et de grandes plantes**, dont **au moins 30 palmiers et cocotiers** (droits, penchés vers la mer, jeunes, vieux, cassés, avec ou sans noix de coco). Le reste : bananiers, banians, fougères arborescentes, pandanus, arbres à fleurs, arbres morts, souches…
 - **≥ 100 modèles différents de buissons et de plantes basses** : fougères, monstera, héliconias, gingembres sauvages, hibiscus, herbes hautes, lianes, plantes grimpantes, jeunes pousses, plantes de bord de mer, mousses, champignons…
 - **Méthode** : on part d'espèces **scannées réelles** (qualité photo). Les variantes sont générées avec le **Procedural Vegetation Editor** d'UE 5.8 (forme, taille, densité du feuillage, âge). Tous les modèles sont en Nanite et animés par le vent.
