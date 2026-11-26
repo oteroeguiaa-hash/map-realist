@@ -37,3 +37,11 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Lumière : HemisphereLight #87ceeb / #6b5e45, soleil doré #fff2d6, biais d'ombre −0,0005, éclairage d'ambiance par la photo HDR « Rainforest Trail » (Poly Haven) le jour.
 - Sol : terre « Farm Soil » (pistes et plaques sous la jungle), galets « Dry River Pebbles » (rives, bassin, criques), roche « Dark Rock 02 » en projection triplanaire complète.
 - Mesures (Chromium logiciel, Élevé) : 0,8 M triangles à la plage, 1,45 M dans la jungle.
+
+## 26/11/2026 — Démo web : vrais troncs, couleurs naturelles, physique du buggy
+
+- Grands arbres : le modèle scanné sert de pied (contreforts, 2,8 m), puis un fût d'écorce monte jusqu'à la couronne à 14–18 m (avant : « piliers de roche » de 7 m).
+- Couleurs moins « dessin animé » : feuilles moins saturées et moins brillantes, lumière d'ambiance réduite (ombres plus profondes), étalonnage photo, netteté adaptative.
+- Fondu entre arbres proches et lointains raccourci : moins de motif tramé.
+- Buggy : boîte automatique 5 vitesses + marche arrière, courbe de couple, pneus à modèle de Pacejka (angle de dérive), adhérence selon la charge, cercle d'adhérence (dérapages au gaz), barres anti-roulis, amortisseurs compression/détente, frein moteur, Ackermann, traînée réaliste. Test : 0–80 km/h en ~4,5 s, stable.
+- Son : crissement des pneus qui glissent, bruits de pas (sable, feuilles, eau). Champ de vision qui s'élargit avec la vitesse.

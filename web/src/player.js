@@ -188,7 +188,11 @@ export class Player {
   applyCamera(dt) {
     const cam = this.camera;
     const moving = this.onGround && this.speed > 0.3;
-    if (moving) this.bob += dt * (this.speed > 3 ? 11.5 : 7.5);
+    if (moving) {
+      const before = Math.sin(this.bob);
+      this.bob += dt * (this.speed > 3 ? 11.5 : 7.5);
+      if (Math.sign(before) !== Math.sign(Math.sin(this.bob)) && this.onStep) this.onStep(this.speed);
+    }
     const amp = moving ? Math.min(this.speed, 5.6) * 0.0085 : 0;
     this.bobAmp = lerp(this.bobAmp || 0, amp, 1 - Math.exp(-dt * 8));
     const by = Math.abs(Math.sin(this.bob)) * this.bobAmp * 2 - this.bobAmp, bx = Math.cos(this.bob) * this.bobAmp;

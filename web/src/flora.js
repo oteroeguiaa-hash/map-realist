@@ -17,7 +17,7 @@ const FADE_BUSH = { value: new THREE.Vector2(20, 24) };
 // Convertit un matériau GLTF en matériau standard « nature » (vent, fondu, translucidité des feuilles)
 const matCache = new Map();
 function natureMat(src, cat, opts = {}) {
-  const key = src.uuid + cat + (opts.bend ? 'b' : '');
+  const key = src.uuid + cat + (opts.bend ? 'b' : '') + (opts.tint ? 't' : '');
   if (matCache.has(key)) return matCache.get(key);
   const leaf = src.alphaTest > 0 || src.transparent || /leaf|leaves|fern|frond|monstera|palm_b08a|banana_b09a/i.test(src.name);
   const m = new THREE.MeshStandardMaterial({
@@ -26,6 +26,8 @@ function natureMat(src, cat, opts = {}) {
     alphaTest: leaf ? 0.5 : 0, transparent: false, depthWrite: true, side: THREE.DoubleSide, vertexColors: false,
   });
   if (src.normalScale) m.normalScale.copy(src.normalScale);
+  if (leaf) { m.color.multiply(new THREE.Color(0.8, 0.84, 0.7)); m.roughness = Math.max(m.roughness, 0.7); }
+  if (opts.tint) m.color.multiply(opts.tint);
   const uniforms = { uFade: cat === 'tree' ? FADE_TREE : FADE_BUSH };
   if (opts.bend) uniforms.uLeanH = opts.leanH;
   patchMaterial(m, { key: 'nat', wind: true, alphaBoost: leaf, fade: true, leaf, bend: !!opts.bend, canopy: 0.35, uniforms, windAmp: '0.3' });
@@ -116,8 +118,8 @@ export function floatGeo(src) {
 }
 
 // Couronne de grand arbre (branches + grappes de vraies feuilles) posée sur le tronc scanné
-function makeCanopy(A, seed, baseY, CR) {
-  const rnd = mulberry32(seed), b = new GeoBuilder();
+function makeCanopy(A, seed, baseY, CR, b = new GeoBuilder()) {
+  const rnd = mulberry32(seed);
   const top = new V3(0, baseY, 0);
   tube(b, [new V3(0, baseY - 1.5, 0), new V3((rnd() - 0.5) * 0.6, baseY + 2.5, (rnd() - 0.5) * 0.6), new V3((rnd() - 0.5), baseY + 5.5, (rnd() - 0.5))], [0.55, 0.42, 0.28], 7, A.treeBark, 2.2, { ao0: 0.6, ao1: 0.85, flex1: 0.06 });
   const crownC = new V3(0, baseY + 5.5 + CR * 0.35, 0);
@@ -148,8 +150,8 @@ export class Flora {
   }
   setQuality(q) {
     this.q = QUAL[q] || QUAL[1];
-    FADE_TREE.value.set(this.q.tree * 0.84, this.q.tree);
-    FADE_BUSH.value.set(this.q.bush * 0.8, this.q.bush);
+    FADE_TREE.value.set(this.q.tree * 0.93, this.q.tree);
+    FADE_BUSH.value.set(this.q.bush * 0.9, this.q.bush);
     this.lastCam.set(1e9, 0, 0);
   }
 
@@ -216,13 +218,23 @@ export class Flora {
     // --- grand tronc scanné + couronne de vraies feuilles ---
     const jungle = glb('jungle');
     if (jungle) {
+      // Le modèle scanné n'est que la base d'un arbre (contreforts) : il sert de pied, puis un vrai fût
+      // d'écorce monte jusqu'à la couronne de feuilles à 14-18 m. Fini les « piliers de roche ».
+      const rootH = 2.8;
       for (let k = 0; k < 3; k++) {
-        const th = 6.5 + k * 0.8;
-        const p = glbParts(jungle, th, 'tree');
+        const p = glbParts(jungle, rootH, 'tree', { tint: new THREE.Color(0.78, 0.68, 0.56) });
         if (!p) break;
-        const crown = makeCanopy(A, 900 + k, th - 0.5, 7 + k);
-        p.parts.push({ geo: crown, mat: this.atlasTree });
-        reg('giant', add({ cat: 'tree', name: 'grand arbre', parts: p.parts, h: th + 12, trunkR: p.r * 0.45, crownR: 8 + k }));
+        let rTop = 0.3;
+        for (const part of p.parts) {
+          const pa = part.geo.attributes.position;
+          for (let i = 0; i < pa.count; i++) if (pa.getY(i) > rootH * 0.88) rTop = Math.max(rTop, Math.hypot(pa.getX(i), pa.getZ(i)));
+        }
+        rTop = Math.min(rTop * 0.8, 0.75);
+        const top = 14 + k * 2, CR = 7 + k, rnd = mulberry32(950 + k), b = new GeoBuilder();
+        tube(b, [new V3(0, rootH * 0.7, 0), new V3((rnd() - 0.5) * 0.8, top * 0.45, (rnd() - 0.5) * 0.8), new V3((rnd() - 0.5) * 1.2, top * 0.8, (rnd() - 0.5) * 1.2), new V3((rnd() - 0.5) * 1.4, top, (rnd() - 0.5) * 1.4)],
+          [rTop, rTop * 0.82, rTop * 0.66, rTop * 0.55], 9, A.treeBark, 2.4, { ao0: 0.55, ao1: 0.9, flex1: 0.03 });
+        p.parts.push({ geo: makeCanopy(A, 900 + k, top - 0.5, CR, b), mat: this.atlasTree });
+        reg('giant', add({ cat: 'tree', name: 'grand arbre', parts: p.parts, h: top + CR * 0.8, trunkR: rTop * 1.4, crownR: CR + 1 }));
       }
     }
     // Seuls les modèles .glb du joueur sont affichés. Les versions générées ne servent que de secours
@@ -506,7 +518,7 @@ export class Flora {
     const box = new THREE.Box3();
     for (const g of this.groups) g.d.length = 0;
     const RT = q.tree, RB = q.bush, RIB = q.impBush;
-    const RT2 = RT * RT, RB2 = RB * RB, RIB2 = RIB * RIB, RTin = (RT * 0.84) ** 2, RBin = (RB * 0.8) ** 2;
+    const RT2 = RT * RT, RB2 = RB * RB, RIB2 = RIB * RIB, RTin = (RT * 0.93) ** 2, RBin = (RB * 0.9) ** 2;
     let nT = 0, nB = 0;
     const tA = this.impTree.a1.array, tB = this.impTree.a2.array, bA = this.impBush.a1.array, bB = this.impBush.a2.array;
     const capB = bA.length / 4;

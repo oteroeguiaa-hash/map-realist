@@ -7,6 +7,7 @@ const COM_H = 0.55;           // hauteur du centre de gravité au repos
 const WR = 0.4;               // rayon des roues
 const WHEELS = [[-0.86, 1.28], [0.86, 1.28], [-0.86, -1.24], [0.86, -1.24]]; // x, z (avant = +z)
 const LNAT = 0.26, LMAX = 0.46, LREST = 0.2;
+const GEARS = [3.3, 2.15, 1.55, 1.18, 0.94], FINAL = 6.4, REV = 6.2, RPM_IDLE = 950, RPM_MAX = 6600;
 
 function rod(a, b, r, seg = 8) {
   const d = new V3().subVectors(b, a), L = d.length();
@@ -58,6 +59,7 @@ export class Buggy {
     this.mass = 720;
     this.Ib = new V3(450, 560, 300); // tangage (x), lacet (y), roulis (z)
     this.steer = 0; this.speed = 0; this.heading = 0; this.rpm = 0;
+    this.gear = 1; this.engRpm = RPM_IDLE; this.shiftT = 0; this.driveF = 0; this.brakeIn = 0; this.engBrake = 0;
     this.wheels = (layout ? layout.wheels : WHEELS).map(([x, z], i) => ({ x, z, front: i < 2, L: LREST, Lprev: LREST, spin: 0, contact: false, load: 0, slip: 0, surface: 0, lastTrack: null, dist: 0 }));
     this.safe = { x: world.spawn.x, z: world.spawn.z, h: world.spawn.heading };
     this.safeT = 0; this.deepT = 0;
@@ -187,6 +189,7 @@ export class Buggy {
   }
 
   place(x, z, heading) {
+    this.gear = 1; this.engRpm = RPM_IDLE; this.shiftT = 0;
     const h = this.T.height(x, z);
     this.pos.set(x, h + COM_H + 0.25, z);
     this.vel.set(0, 0, 0); this.angVel.set(0, 0, 0);
@@ -219,10 +222,13 @@ export class Buggy {
     if (dt <= 0) { this.updateVisual(0); return; }
     const steps = Math.ceil(dt / 0.0045), h = dt / steps;
     // direction (lissée, réduite à haute vitesse)
-    const maxSteer = 0.6 / (1 + Math.abs(this.speed) * 0.045);
+    const maxSteer = 0.62 / (1 + Math.abs(this.speed) * 0.05);
     const target = clamp(inp.steer, -1, 1) * maxSteer;
-    this.steer += clamp(target - this.steer, -dt * 2.6, dt * 2.6);
+    // braque vite, revient encore plus vite au centre (auto-alignement)
+    const rate = Math.abs(target) < Math.abs(this.steer) ? 4.2 : 2.8;
+    this.steer += clamp(target - this.steer, -dt * rate, dt * rate);
     this.inp = inp;
+    this.drivetrain(dt, inp);
     for (let s = 0; s < steps; s++) this.step(h, inp);
     // sécurité : retour à un point sûr si on tombe à l'eau profonde ou sous le relief
     const g = this.T.height(this.pos.x, this.pos.z);
@@ -252,6 +258,33 @@ export class Buggy {
     }
   }
 
+  // Boîte automatique et moteur (une fois par image)
+  drivetrain(dt, inp) {
+    const v = this.speed, thr = clamp(inp.throttle, -1, 1);
+    // marche arrière : à l'arrêt, joystick tiré vers soi
+    if (thr < -0.1 && v < 0.8 && this.gear > 0) this.gear = -1;
+    else if (thr > 0.1 && v > -0.8 && this.gear < 0) this.gear = 1;
+    const ratio = this.gear < 0 ? REV : GEARS[this.gear - 1];
+    const wheelRpm = Math.abs(v) / this.WR * 60 / (2 * Math.PI);
+    let rpm = wheelRpm * ratio * FINAL;
+    const pedal = this.gear < 0 ? Math.max(-thr, 0) : Math.max(thr, 0);
+    if (rpm < 2600) rpm = Math.max(rpm, RPM_IDLE + pedal * 2400); // embrayage qui patine au démarrage
+    this.shiftT = Math.max(0, this.shiftT - dt);
+    if (this.gear > 0 && this.shiftT <= 0) {
+      if (wheelRpm * ratio * FINAL > 6100 && this.gear < GEARS.length) { this.gear++; this.shiftT = 0.24; this.onShift && this.onShift(); }
+      else if (this.gear > 1 && wheelRpm * GEARS[this.gear - 2] * FINAL < 4300) { this.gear--; this.shiftT = 0.18; }
+    }
+    this.engRpm = lerp(this.engRpm, Math.min(rpm, RPM_MAX), 1 - Math.exp(-dt * (this.shiftT > 0 ? 6 : 14)));
+    const torque = this.engRpm >= RPM_MAX - 50 ? 0 : 135 + 90 * Math.exp(-(((this.engRpm - 4400) / 2300) ** 2));
+    const sign = this.gear < 0 ? -1 : 1;
+    this.driveF = sign * pedal * torque * ratio * FINAL * 0.88 / this.WR * (this.shiftT > 0 ? 0.15 : 1);
+    // frein : joystick à l'opposé du sens de marche
+    this.brakeIn = (this.gear > 0 && thr < -0.05 && v > 0.5) ? -thr : (this.gear < 0 && thr > 0.05 && v < -0.5) ? thr : 0;
+    // frein moteur quand on lâche l'accélérateur
+    this.engBrake = pedal < 0.05 ? clamp(Math.abs(v) * 45, 0, 900) : 0;
+    this.rpm = this.engRpm / RPM_MAX;
+  }
+
   step(h, inp) {
     const T = this.T, m = this.mass;
     const R = new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(this.quat));
@@ -260,35 +293,44 @@ export class Buggy {
     const F = new V3(0, -9.81 * m, 0), Tq = new V3();
     const vf = this.vel.dot(fwd);
     this.speed = vf;
-    // moteur / freins
-    const thr = inp.throttle, brakeIn = inp.brake;
-    let drive = 0, brake = 0;
-    if (thr > 0.02) { drive = vf < -1 ? 0 : thr * 7800 * Math.max(0, 1 - Math.max(vf, 0) / 31); if (vf < -1) brake = thr; }
-    else if (thr < -0.02) { if (vf > 1.0) brake = -thr; else drive = thr * 4200 * Math.max(0, 1 - Math.max(-vf, 0) / 9); }
-    const hand = brakeIn > 0;
-    this.rpm = lerp(this.rpm, clamp(Math.abs(vf) / 31 * 0.8 + Math.abs(thr) * 0.35, 0.08, 1), 0.02);
+    const hand = inp.brake > 0;
+    // 1) suspensions : compression de chaque roue
+    const cosT = Math.max(up.y, 0.3);
     for (let i = 0; i < 4; i++) {
       const w = this.wheels[i];
       const a = new V3(w.x, 0.05, w.z).applyMatrix3(R).add(this.pos);
       const g = T.height(a.x, a.z);
-      const cosT = Math.max(up.y, 0.3);
       const dist = (a.y - g - this.WR) / cosT;
-      let L = clamp(dist, 0.03, LMAX);
       w.contact = dist < LMAX;
-      w.Lprev = w.L; w.L = w.contact ? L : Math.min(LMAX, w.L + h * 2.5);
+      w.Lprev = w.L; w.L = w.contact ? clamp(dist, 0.03, LMAX) : Math.min(LMAX, w.L + h * 2.5);
+      w.a = a; w.g = g; w.dist = dist;
+    }
+    // 2) barres anti-roulis (avant, arrière) : limitent le roulis en virage
+    const arb = [0, 0, 0, 0];
+    for (const [l, r, k] of [[0, 1, 14000], [2, 3, 10000]]) {
+      const wl = this.wheels[l], wr = this.wheels[r];
+      if (!wl.contact || !wr.contact) continue;
+      const d = (LNAT - wl.L) - (LNAT - wr.L);
+      arb[l] = d * k; arb[r] = -d * k;
+    }
+    const N0 = m * 9.81 / 4;
+    for (let i = 0; i < 4; i++) {
+      const w = this.wheels[i];
       w.water = false;
       if (!w.contact) { w.load = 0; w.cp = null; continue; }
-      const comp = LNAT - L;
+      const comp = LNAT - w.L;
       const vComp = (w.Lprev - w.L) / h;
-      let Fs = Math.max(0, comp * 30000 + vComp * 3000);
-      if (dist < 0.03) Fs += (0.03 - dist) * 150000; // butée
+      let Fs = Math.max(0, comp * 30000 + vComp * (vComp > 0 ? 2600 : 3800) + arb[i]);
+      if (w.dist < 0.03) Fs += (0.03 - w.dist) * 150000; // butée
       w.load = Fs;
+      const a = w.a, g = w.g;
       const cp = new V3(a.x, g, a.z);
       const n = T.normal(a.x, a.z, new V3(), 0.8);
       const surf = this.surfaceAt(a.x, a.z, g);
       w.surface = surf;
-      // direction de la roue
-      const st = w.front ? this.steer : 0;
+      // direction de la roue (Ackermann : la roue intérieure braque un peu plus)
+      let st = w.front ? this.steer : 0;
+      if (w.front && st) st *= 1 + Math.sign(st) * Math.sign(w.x) * -0.08;
       const wf = fwd.clone().applyAxisAngle(up, st);
       const wfg = wf.clone().addScaledVector(n, -wf.dot(n)).normalize();
       const ws = new V3().crossVectors(n, wfg).normalize();
@@ -296,22 +338,31 @@ export class Buggy {
       const vc = this.vel.clone().add(new V3().crossVectors(this.angVel, r));
       const vlat = vc.dot(ws), vlong = vc.dot(wfg);
       w.vlong = vlong; w.fwdDir = wfg; w.cp = cp; w.cn = n;
-      const MU = [0.78, 0.92, 0.98, 0.9, 1.05, 0.82][surf];
-      const CRR = [0.07, 0.03, 0.02, 0.025, 0.015, 0.05][surf];
-      let mu = MU;
+      // adhérence selon le sol, et un pneu très chargé adhère proportionnellement moins
+      const MU = [0.74, 0.9, 0.96, 0.88, 1.05, 0.8][surf];
+      const BS = [5.5, 7.5, 8, 8, 10, 6][surf];     // raideur du pneu : faible dans le sable mou (glisse progressive)
+      const CRR = [0.06, 0.03, 0.02, 0.025, 0.015, 0.05][surf];
+      let mu = MU * clamp(1 - 0.1 * (Fs / N0 - 1), 0.75, 1.1);
       if (g < 0.0) { mu *= 0.8; w.water = true; }
-      const N = Fs;
-      let latMu = mu * (hand && !w.front ? 0.45 : 1);
-      let Flat = -latMu * N * Math.tanh(vlat / 0.9);
-      let Flong = (drive * (w.front ? 0.4 : 0.6)) - Math.sign(vlong) * Math.min(Math.abs(vlong) * 4000, (brake * 9000 + (hand && !w.front ? 7000 : 0)) / 4 * (w.front ? 1.1 : 0.9)) - vlong * CRR * N * 0.35 - Math.sign(vlong) * Math.min(Math.abs(vlong) * 200, CRR * N);
-      const lim = mu * N;
-      const tot = Math.hypot(Flat, Flong);
-      w.slip = tot > lim ? (tot - lim) / Math.max(lim, 1) * 4 + Math.abs(vlat) * 0.2 : Math.abs(vlat) * 0.12;
-      if (tot > lim) { Flat *= lim / tot; Flong *= lim / tot; }
+      const N = Fs, lim = mu * N;
+      // force latérale : modèle de Pacejka simplifié sur l'angle de dérive
+      const alpha = Math.atan2(vlat, Math.max(Math.abs(vlong), 1.5));
+      const Ba = BS * alpha;
+      let Flat = -lim * Math.sin(1.35 * Math.atan(Ba - 0.6 * (Ba - Math.atan(Ba)))) * (hand && !w.front ? 0.5 : 1);
+      // force longitudinale demandée : moteur (4x4, 35 % avant / 65 % arrière), freins, frein moteur, roulement
+      const sv = clamp(vlong / 0.6, -1, 1);
+      let Fd = this.driveF * (w.front ? 0.175 : 0.325);
+      Fd -= sv * (this.brakeIn * (w.front ? 5200 : 3400) + (hand && !w.front ? 4200 : 0) + this.engBrake * (w.front ? 0.175 : 0.325));
+      Fd -= sv * CRR * N;
+      // cercle d'adhérence : ce qui part en motricité n'est plus disponible pour tourner
+      const Flong = clamp(Fd, -lim, lim);
+      const latAvail = Math.sqrt(Math.max(lim * lim - Flong * Flong, 0));
+      if (Math.abs(Flat) > latAvail) Flat = Math.sign(Flat) * latAvail;
+      w.slip = Math.min(4, Math.max(0, Math.abs(Fd) - lim) / Math.max(lim, 400) * 3 + Math.abs(alpha) * 2.2);
+      w.spinX = Math.min(1.5, Math.max(0, Math.abs(Fd) - lim) / Math.max(lim, 400)) * Math.sign(Fd) * 6; // patinage visible
       const Fw = new V3().addScaledVector(up, Fs).addScaledVector(ws, Flat).addScaledVector(wfg, Flong);
       F.add(Fw);
       Tq.add(new V3().crossVectors(r, Fw));
-      // eau : traînée
       if (w.water) { const dep = clamp(-g, 0, 1.2); F.addScaledVector(this.vel, -dep * 260); }
     }
     // collisions de la caisse avec le sol (avant, arrière)
@@ -331,14 +382,14 @@ export class Buggy {
     // flottaison
     if (this.pos.y < 0.2) { F.y += clamp(0.2 - this.pos.y, 0, 1.5) * 6500; F.addScaledVector(this.vel, -300); this.angVel.multiplyScalar(0.995); }
     // aérodynamique
-    F.addScaledVector(this.vel, -0.45 * this.vel.length());
+    F.addScaledVector(this.vel, -1.05 * this.vel.length()); // traînée : 0,5 × ρ × Cx × S
     // intégration
     this.vel.addScaledVector(F, h / m);
     const Tb = Tq.clone().applyMatrix3(R.clone().transpose());
     const Ib = this.Ib;
     const wb = this.angVel.clone().applyMatrix3(R.clone().transpose());
     wb.x += Tb.x / Ib.x * h; wb.y += Tb.y / Ib.y * h; wb.z += Tb.z / Ib.z * h;
-    wb.multiplyScalar(1 - 0.6 * h);
+    wb.multiplyScalar(1 - (this.wheels.some((w) => w.contact) ? 0.6 : 0.15) * h);
     this.angVel.copy(wb.applyMatrix3(R));
     this.pos.addScaledVector(this.vel, h);
     const wq = new THREE.Quaternion(this.angVel.x * h * 0.5, this.angVel.y * h * 0.5, this.angVel.z * h * 0.5, 0).multiply(this.quat);
@@ -374,7 +425,7 @@ export class Buggy {
     if (this.glbWheels) {
       for (const o of this.glbWheels) {
         const w = this.wheels[o.i];
-        const ang = (w.contact ? (w.vlong || 0) : this.speed) / this.WR;
+        const ang = ((w.contact ? (w.vlong || 0) : this.speed) + (w.spinX || 0)) / this.WR;
         w.spin += ang * dt;
         this._qa.setFromAxisAngle(o.up, w.front ? this.steer : 0);
         this._qb.setFromAxisAngle(o.axis, w.spin);

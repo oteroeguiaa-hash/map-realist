@@ -51,10 +51,10 @@ console.log('statut :', status);
 if (/Impossible/.test(status)) { console.log(logs.join('\n')); console.log(await page.evaluate(() => window.__err || '')); await browser.close(); server.close(); process.exit(1); }
 const scen = process.argv[2] || 'spawn';
 if (scen === 'drive') {
-  await page.evaluate(() => { document.getElementById('load').hidden = true; document.getElementById('hud').hidden = false; const G = window.__game; G.__t = 0; G.controls.read = () => { G.__t++; return { throttle: G.__t < 45 ? 0.6 : 0, steer: G.__t > 14 && G.__t < 30 ? 0.6 : 0, brake: G.__t > 45 ? 1 : 0, b2: 0, lookX: 0, lookY: 0, up: false, down: false, camera: false, reset: false, fast: false }; }; });
-  for (let i = 0; i < 60; i++) {
+  await page.evaluate(() => { document.getElementById('load').hidden = true; document.getElementById('hud').hidden = false; const G = window.__game; G.mode = 'buggy'; G.rig.setMode('chase'); G.__t = 0; G.controls.read = () => { G.__t++; return { throttle: G.__t < 120 ? 1 : G.__t < 150 ? -1 : 0, steer: G.__t > 60 && G.__t < 100 ? 0.8 : 0, brake: 0, b2: 0, lookX: 0, lookY: 0, up: false, down: false, camera: false, reset: false, fast: false }; }; });
+  for (let i = 0; i < 160; i++) {
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
-    if (i % 10 === 9) console.log(await page.evaluate(() => { const b = window.__game.buggy; const up = new (b.pos.constructor)(0, 1, 0).applyQuaternion(b.quat); return `t=${window.__game.__t} pos=${b.pos.toArray().map((v) => v.toFixed(1))} v=${(b.speed * 3.6).toFixed(0)}km/h up.y=${up.y.toFixed(2)} contacts=${b.wheels.filter((w) => w.contact).length} surf=${b.wheels.map((w) => w.surface)}`; }));
+    if (i % 10 === 9) console.log(await page.evaluate(() => { const b = window.__game.buggy; const up = new (b.pos.constructor)(0, 1, 0).applyQuaternion(b.quat); return `t=${window.__game.__t} pos=${b.pos.toArray().map((v) => v.toFixed(1))} v=${(b.speed * 3.6).toFixed(0)}km/h up.y=${up.y.toFixed(2)} contacts=${b.wheels.filter((w) => w.contact).length} surf=${b.wheels.map((w) => w.surface)} gear=${b.gear} rpm=${b.engRpm|0} slip=${b.wheels.map((w)=>(w.slip||0).toFixed(1))}`; }));
   }
   await page.evaluate(() => { const G = window.__game; G.rig.userYaw = 3.0; G.rig.userPitch = 0.75; });
   for (let i = 0; i < 4; i++) await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));

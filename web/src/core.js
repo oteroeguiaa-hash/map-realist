@@ -152,7 +152,7 @@ export function patchMaterial(mat, opts = {}) {
         {
           vec3 vdir = normalize(vWP - uCamPos);
           float bl = pow(max(dot(vdir, uSunDir), 0.0), 3.0);
-          reflectedLight.directDiffuse += diffuseColor.rgb * gSunDirect * (0.08 + bl * 0.55) * RECIPROCAL_PI * 3.0;
+          reflectedLight.directDiffuse += diffuseColor.rgb * gSunDirect * (0.03 + bl * 0.4) * RECIPROCAL_PI * 3.0;
         }`;
     }
     if (opts.fragmentMain) fs = fs.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + opts.fragmentMain);

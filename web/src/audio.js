@@ -45,6 +45,24 @@ export class Sound {
     this.eng.connect(ef); this.eng2.connect(e2g); e2g.connect(ef); ef.connect(this.engG); this.engG.connect(this.master);
     this.eng.start(); this.eng2.start();
     this.ef = ef;
+    this.white = white;
+    // crissement / glissement des pneus (sable, terre)
+    this.skidG = c.createGain(); this.skidG.gain.value = 0;
+    const sf = c.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 900; sf.Q.value = 0.7;
+    chain(src(brown), sf, this.skidG, this.master);
+  }
+  // pas du personnage : sable (doux), herbe et feuilles (froissement), eau (clapotis)
+  footstep(kind, vol = 1) {
+    const c = this.ctx; if (!c) return;
+    const t = c.currentTime, s = c.createBufferSource(); s.buffer = this.white;
+    s.playbackRate.value = 0.8 + Math.random() * 0.4;
+    const f = c.createBiquadFilter(), g = c.createGain();
+    f.type = kind === 'water' ? 'lowpass' : 'bandpass';
+    f.frequency.value = kind === 'sand' ? 700 : kind === 'water' ? 900 : 2200; f.Q.value = kind === 'leaves' ? 0.9 : 0.6;
+    const len = kind === 'water' ? 0.22 : 0.12;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16 * vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t, Math.random() * 1.5); s.stop(t + len + 0.05);
   }
   bird(vol) {
     const c = this.ctx, o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
@@ -77,6 +95,9 @@ export class Sound {
     this.ef.frequency.setTargetAtTime(400 + rpm * 1400, now, 0.08);
     const near = clamp(1 - buggy.pos.distanceTo(p) / 60, 0, 1);
     this.engG.gain.setTargetAtTime((0.05 + rpm * 0.18) * near * (buggy.engineOn ?? 1), now, 0.25);
+    const slip = buggy.wheels.reduce((a, w) => a + (w.contact ? Math.min(w.slip || 0, 3) : 0), 0) / 4;
+    const sp = Math.min(Math.abs(buggy.speed) / 8, 1);
+    this.skidG.gain.setTargetAtTime(clamp((slip - 0.35) * 0.25, 0, 0.3) * sp * near * (buggy.engineOn ?? 1), now, 0.08);
     // oiseaux le jour, dans la végétation
     this.birdT -= dt;
     const day = sky.hour > 6 && sky.hour < 18.8;

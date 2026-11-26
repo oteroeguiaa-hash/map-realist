@@ -158,6 +158,11 @@ async function boot() {
     const controls = new Controls(canvas, ui);
     const rig = new CameraRig(camera, data);
     G.controls = controls; G.rig = rig;
+    player.onStep = (v) => {
+      const p = player.pos, h = data.height(p.x, p.z);
+      const kind = player.waterLevel(p.x, p.z) - h > 0.15 ? 'water' : h < 2.2 ? 'sand' : 'leaves';
+      sound.footstep(kind, clamp(v / 4, 0.4, 1.2));
+    };
     player.onHit = (p, kind) => {
       if (kind === 'tree') { fx.sand(p, new THREE.Vector3(), 9, 2); ui.toast('Toc !'); }
       fauna.scare(p, 14);
@@ -267,7 +272,7 @@ async function boot() {
       const w = window.innerWidth, h = window.innerHeight;
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
-      camera.fov = w > h ? 58 : 72;
+      G.baseFov = camera.fov = w > h ? 58 : 72;
       camera.updateProjectionMatrix();
       const pr = renderer.getPixelRatio();
       post.setSize(w, h, G.scale, pr);
@@ -329,6 +334,10 @@ async function boot() {
           rig.target.copy(player.pos);
         }
       }
+      // champ de vision qui s'élargit avec la vitesse (sensation de vitesse), et en sprint
+      const fovAdd = rig.mode === 'chase' && G.mode === 'buggy' ? clamp((Math.abs(buggy.speed) - 8) * 0.35, 0, 11) : G.mode === 'foot' && rig.mode === 'foot' && player.speed > 4 ? 4 : 0;
+      const fovT = G.baseFov + fovAdd;
+      if (Math.abs(camera.fov - fovT) > 0.01) { camera.fov = lerp(camera.fov, fovT, 1 - Math.exp(-dt * 3)); camera.updateProjectionMatrix(); }
       U.uCamPos.value.copy(camera.position);
       // ciel, lumière
       const sunMoved = sky.update(dt, scene) || sunPrev.distanceToSquared(U.uSunDir.value) > 1e-6;
@@ -339,7 +348,7 @@ async function boot() {
       // ambiance : même rapport que 2,5 (soleil) / 1,3 (ciel), suit l'heure et la météo
       const dayK = clamp(U.uSunDir.value.y * 4 + 0.15, 0.05, 1);
       const ambL0 = U.uSkyAmb.value.r * 0.21 + U.uSkyAmb.value.g * 0.72 + U.uSkyAmb.value.b * 0.07;
-      hemi.intensity = Math.max(sky.sunIntensity * (1.3 / 2.5) * dayK * (1 - sky.weather * 0.5), ambL0 * 1.2);
+      hemi.intensity = Math.max(sky.sunIntensity * (1.3 / 2.5) * 0.55 * dayK * (1 - sky.weather * 0.5), ambL0 * 0.9); // ombres profondes mais jamais noires
       if (scene.environment && (!hdri || scene.environment !== hdri.tex)) skyEnv = scene.environment;
       if (hdri && U.uSunDir.value.y > 0.12) { scene.environment = hdri.tex; scene.environmentIntensity = 0.5 * ambL0 / Math.max(hdri.avg, 1e-4); }
       else if (skyEnv) { scene.environment = skyEnv; scene.environmentIntensity = 0.5; }
