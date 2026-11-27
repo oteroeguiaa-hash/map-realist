@@ -12,6 +12,8 @@ const QUAL = [
   { tree: 120, bush: 42, shadow: 85, impBush: 260, density: 1.0 },
 ];
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _ax = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
+// interrupteur : true = aucun arbre ni plante sur l'île
+export const NO_VEGETATION = true;
 const FADE_TREE = { value: new THREE.Vector2(55, 65) };
 const FADE_BUSH = { value: new THREE.Vector2(20, 24) };
 
@@ -149,6 +151,13 @@ export class Flora {
   }
 
   async init(base, bank, progress) {
+    // L'île n'a plus d'arbres ni de plantes (choix du joueur) : structures vides, aucun type construit.
+    if (NO_VEGETATION) {
+      this.types = []; this.arch = {};
+      this.place(); this.buildMeshes(); this.buildImpostors();
+      progress(1, 'Île sans végétation');
+      return;
+    }
     const [map, nmap] = await Promise.all([
       loadTex(`${base}/tex/veg_a.webp`, { srgb: true, aniso: 4 }),
       loadTex(`${base}/tex/veg_n.jpg`, { srgb: false, aniso: 4 }),
@@ -382,6 +391,7 @@ export class Flora {
   // Couronnes de palmiers proches d'un point (perchoirs pour les oiseaux)
   palmTops(n, near, rnd) {
     const out = [], I = this.I;
+    if (!I.n) return out; // pas de palmiers : pas de perchoirs
     for (let tries = 0; tries < 20000 && out.length < n; tries++) {
       const i = Math.floor(rnd() * I.n), t = this.types[I.t[i]];
       if (t.name !== 'palmier' || (near && Math.hypot(I.x[i] - near.x, I.z[i] - near.z) > near.r)) continue;

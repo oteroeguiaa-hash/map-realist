@@ -115,3 +115,9 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Îles lointaines en petites silhouettes sombres (9–16 km), gorge rocheuse à trois étages autour de la cascade.
 - Correctifs : un commentaire masquait le compteur d'images (le jeu ne démarrait plus) ; retrait de la compilation anticipée des shaders (bloquait le démarrage). Démarrage mesuré : 20 s (Chromium logiciel).
 - Limite de 16 textures par shader respectée en Bas et Moyen.
+
+## 27/11/2026 — Démo web : île sans végétation (demande du joueur)
+
+- Tous les arbres et plantes retirés (interrupteur `NO_VEGETATION` dans `web/src/flora.js`, remettre à false pour les retrouver). Les modèles de végétation ne sont plus chargés.
+- Démarrage : 20 s → 10–13 s ; départ en qualité Basse : ~0,9 M triangles, 123 appels de dessin.
+- Conséquences : plus d’battage (bois), plus d'oiseaux perchés.

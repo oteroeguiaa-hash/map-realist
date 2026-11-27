@@ -47,7 +47,7 @@ const QUALITY = [
 ];
 
 // ordre de chargement des modèles .glb : végétation d'abord, puis rochers, véhicules, outils, animaux
-const GLB_ORDER = ['palm', 'plants', 'fern2', 'grass2', 'othonna', 'roots',
+const GLB_ORDER = [ // plus de végétation : palmiers, plantes, fougères, herbes et racines ne sont plus chargés
   'barrier', 'sconce', 'searchlight', 'candle', 'torch', 'binoculars', 'nboulder2', 'nboulder5', 'rockface', 'mossrocks', 'ncliff', 'mountain', 'trunk2', 'sandrocks', 'buggy', 'plane', 'axe', 'rivelaine',
   'crab', 'seagull', 'parrot', 'aracari', 'parrots', 'monkey', 'boar', 'tiger', 'jaguar', 'komodo', 'python', 'turtle', 'fishschool', 'shark', 'croc'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -164,8 +164,8 @@ async function boot() {
     const water = new Water(scene, data, world, sky);
     G.water = water;
 
-    ui.progress(0.5, 'Palmiers, arbres géants et plantes de la jungle…');
-    await waitModels(['palm', 'plants', 'fern2', 'grass2', 'othonna', 'roots'], 30000);
+    ui.progress(0.5, 'Relief de l’île…');
+    
     await nextFrame();
     const veg = new Flora(renderer, scene, data, world, atlasRects, Q().veg);
     await veg.init(ASSETS, bank, (p, msg) => ui.progress(0.5 + p * 0.25, msg));
