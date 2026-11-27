@@ -54,7 +54,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const G = (window.__game = {
   mode: 'foot',
-  ready: false, expo: 1, autoQ: true, qi: isMobile ? 0 : 2, goodT: 0, downT: -1e9, // téléphone : démarre en Bas, monte tout seul si c'est fluide frame: 0, fpsAvg: 30, scale: 1, paused: false,
+  // téléphone : démarre en Bas, monte tout seul si c'est fluide
+  ready: false, expo: 1, autoQ: true, qi: isMobile ? 0 : 2, goodT: 0, downT: -1e9, frame: 0, fpsAvg: 30, scale: 1, paused: false,
 });
 { const qp = new URLSearchParams(location.search).get('q'); if (qp !== null && QUALITY[+qp]) { G.qi = +qp; G.autoQ = false; } }
 const ui = new UI();
