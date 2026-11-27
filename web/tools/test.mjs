@@ -81,6 +81,17 @@ const shots = {
     { name: 'shore_low', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x+2, 2.2, s.z+8); G.rig.yaw=Math.PI*1.0; G.rig.pitch=-0.12;` },
     { name: 'shore_high', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x, 14, s.z-10); G.rig.yaw=Math.PI; G.rig.pitch=-0.35;` },
   ],
+  // eau de mer et bord de plage : jet de rive à deux instants, vue plongeante, paillettes face au soleil, sous l'eau, vue d'ensemble
+  water: [
+    { name: 'w_shore_low', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x+2, 2.2, s.z+8); G.rig.yaw=Math.PI*1.0; G.rig.pitch=-0.12; G.water.oceanU.uTime.value=100;` },
+    { name: 'w_shore_high', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x, 14, s.z-10); G.rig.yaw=Math.PI; G.rig.pitch=-0.35;` },
+    { name: 'w_swash', setup: `G.rig.setMode('drone'); const s=G.world.spawn, T=G.terrain; let z=s.z; while(T.height(s.x,z)>0.05 && z<s.z+300) z+=0.5; window.__sh=[s.x,z]; G.camera.position.set(s.x, T.height(s.x,z-5)+1.7, z-5); G.rig.yaw=Math.PI-1.15; G.rig.pitch=-0.12; G.water.oceanU.uTime.value=100;` },
+    { name: 'w_swash2', setup: `G.water.oceanU.uTime.value=102.6;` },
+    { name: 'w_down', setup: `const T=G.terrain, [x,z]=window.__sh; G.camera.position.set(x, T.height(x,z-1)+3.5, z-1); G.rig.yaw=Math.PI; G.rig.pitch=-0.95; G.water.oceanU.uTime.value=101.2;` },
+    { name: 'w_glitter', setup: `const T=G.terrain, [x,z]=window.__sh; const d=G.water.oceanU.uSunDir.value; G.camera.position.set(x, 3.0, z+2); G.rig.yaw=Math.atan2(-d.x,-d.z); G.rig.pitch=-0.1;` },
+    { name: 'w_under', setup: `G.teleport('lagon');` },
+    { name: 'w_island', setup: `G.rig.setMode('drone'); G.camera.position.set(500, 380, 900); G.rig.yaw = 0.55; G.rig.pitch = -0.32;` },
+  ],
   // nombre de textures utilisées par chaque shader (limite iPhone : 16 dans le fragment shader)
   samplers: [{ name: 'samplers', setup: `G.sky.setHour(20.5);`, after: `
     const gl=G.renderer.getContext(); const out=[];

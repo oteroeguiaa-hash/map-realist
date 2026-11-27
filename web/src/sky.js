@@ -294,7 +294,12 @@ export class Sky {
           float r = 0.0062;
           float disk = smoothstep(cos(r), cos(r * 0.8), ca);
           float limb = 0.6 + 0.4 * sqrt(max(0.0, 1.0 - (1.0 - ca) / (1.0 - cos(r))));
-          vec3 col = c.rgb + uSunColor * c.a * (disk * limb * 2200.0 + pow(max(ca, 0.0), 1500.0) * 6.0 + pow(max(ca, 0.0), 60.0) * 0.04) * step(-0.01, d.y);
+          // soleil éblouissant : disque (assombri au bord), couronne serrée très intense, auréole courte
+          // (atténués par les nuages devant, c.a) ; pas de voile large : l'image reste nette autour
+          float cp = max(ca, 0.0);
+          float glare = pow(cp, 12000.0) * 60.0 + pow(cp, 1500.0) * 7.0 + pow(cp, 220.0) * 0.12 + pow(cp, 60.0) * 0.04;
+          vec3 col = c.rgb + uSunColor * c.a * (disk * limb * 2200.0 + glare) * step(-0.01, d.y);
+          col = min(col, vec3(30000.0)); // reste sous la limite des cibles en demi-flottants (pas d'infini)
           if (uCamPos.y < 0.0) col = (uSunColor * max(uSunDir.y, 0.0) + uSkyAmb * 3.14159) * vec3(0.0006, 0.0075, 0.0105);
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>

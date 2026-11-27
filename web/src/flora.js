@@ -1,8 +1,8 @@
 // Végétation à partir des modèles du joueur (palmier, monsteras, pack de plantes tropicales, grand tronc de jungle),
 // complétée par des arbres à feuilles scannées. Instanciation, fondu tramé vers des imposteurs : tout reste visible au loin.
 import * as THREE from 'three';
-import { U, GLSL_COMMON, GLSL_BAYER, GeoBuilder, mulberry32, patchMaterial, loadTex, clamp, smoothstep, hash2, vnoise } from './core.js';
-import { makeBroadleaf, makeTreeFern, makePalm, makeBush, makeDead, tube, cluster } from './vegetation.js';
+import { U, GLSL_COMMON, GLSL_BAYER, mulberry32, patchMaterial, loadTex, clamp, smoothstep, hash2, vnoise } from './core.js';
+import { makeBroadleaf, makePalm, makeGiant, makeThicket, GIANT_STYLES } from './vegetation.js';
 
 const V3 = THREE.Vector3;
 const QUAL = [
@@ -133,30 +133,6 @@ export function floatGeo(src) {
   return g;
 }
 
-// Couronne de grand arbre (branches + grappes de vraies feuilles) posée sur le tronc scanné
-function makeCanopy(A, seed, baseY, CR, b = new GeoBuilder()) {
-  const rnd = mulberry32(seed);
-  const top = new V3(0, baseY, 0);
-  tube(b, [new V3(0, baseY - 1.5, 0), new V3((rnd() - 0.5) * 0.6, baseY + 2.5, (rnd() - 0.5) * 0.6), new V3((rnd() - 0.5), baseY + 5.5, (rnd() - 0.5))], [0.55, 0.42, 0.28], 7, A.treeBark, 2.2, { ao0: 0.6, ao1: 0.85, flex1: 0.06 });
-  const crownC = new V3(0, baseY + 5.5 + CR * 0.35, 0);
-  const tips = [];
-  for (let k = 0; k < 6; k++) {
-    const a = k / 6 * Math.PI * 2 + rnd() * 0.5, el = 0.25 + rnd() * 0.35;
-    const s0 = new V3(0, baseY + 3 + rnd() * 2.5, 0), d = new V3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el));
-    const e = s0.clone().addScaledVector(d, CR * 0.85);
-    tube(b, [s0, s0.clone().lerp(e, 0.5).add(new V3(0, 0.6, 0)), e], [0.26, 0.17, 0.08], 5, A.treeBark, 2.2, { ao0: 0.7, ao1: 0.9, flex0: 0.05, flex1: 0.25, phase: rnd() });
-    tips.push(e);
-  }
-  const aoFn = (q) => 0.5 + 0.5 * clamp(q.distanceTo(crownC) / CR, 0, 1);
-  for (let k = 0; k < 70; k++) {
-    const u = rnd() * Math.PI * 2, v = Math.acos(rnd() * 2 - 1), r = Math.pow(rnd(), 0.45);
-    const q = new V3(Math.sin(v) * Math.cos(u) * CR * r, Math.cos(v) * CR * 0.45 * r, Math.sin(v) * Math.sin(u) * CR * r).add(crownC);
-    cluster(b, q, 2.2 + rnd() * 1.2, rnd() < 0.7 ? A.clusterA : A.clusterB, rnd, crownC, aoFn, rnd());
-  }
-  for (const t of tips) cluster(b, t, 2.6, A.clusterA, rnd, crownC, aoFn, rnd());
-  return b.build();
-}
-
 export class Flora {
   constructor(renderer, scene, terrain, world, rects, q) {
     this.renderer = renderer; this.scene = scene; this.T = terrain; this.world = world; this.rects = rects;
@@ -179,9 +155,14 @@ export class Flora {
     ]);
     const atlasMat = (cat) => patchMaterial(new THREE.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new THREE.Vector2(0.8, 0.8), alphaTest: 0.5, alphaToCoverage: true, transparent: false, depthWrite: true, side: THREE.DoubleSide, vertexColors: true, roughness: 0.72 }), {
       key: 'atlas', wind: true, alphaBoost: true, fade: true, canopy: 0.35, uniforms: { uFade: cat === 'tree' ? FADE_TREE : FADE_BUSH },
-      afterLights: `{ vec3 vdir = normalize(vWP - uCamPos); float bl = pow(max(dot(vdir, uSunDir), 0.0), 3.0);
+      // feuilles : lumière du soleil transmise à travers le limbe (face vue à l'ombre, contre-jour),
+      // plus jaune-vert que la lumière réfléchie ; nulle dans l'ombre portée (gSunDirect inclut les ombres)
+      afterLights: `{ vec3 vdir = normalize(vWP - uCamPos); float bl = pow(max(dot(vdir, uSunDir), 0.0), 4.0);
         float leaf = 1.0 - step(vMapUv.x, 0.5) * step(0.5, vMapUv.y);
-        reflectedLight.directDiffuse += diffuseColor.rgb * gSunDirect * (0.08 + bl * 0.55) * leaf * RECIPROCAL_PI * 3.0; }`,
+        vec3 sunV = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
+        float back = max(-dot(normal, sunV), 0.0);
+        vec3 tcol = diffuseColor.rgb * vec3(0.92, 1.0, 0.5);
+        reflectedLight.directDiffuse += tcol * gSunDirect * (0.06 + back * 0.32 + bl * 0.85) * leaf * RECIPROCAL_PI * 2.6; }`,
     });
     this.atlasTree = atlasMat('tree'); this.atlasBush = atlasMat('bush');
     const A = this.rects;
@@ -191,13 +172,12 @@ export class Flora {
     const reg = (arch, idx) => { (this.arch[arch] = this.arch[arch] || []).push(idx); };
 
     progress(0.1, 'Palmiers et plantes (tes modèles)…');
-    // --- palmier du joueur : 3 variantes de hauteur, inclinaison par instance ---
+    // --- palmier du joueur : un seul type (la hauteur varie par instance : un appel de dessin au lieu de trois),
+    // inclinaison par instance ---
     const palm = glb('palm');
     if (palm) {
-      for (const hgt of [8.5, 10, 11.5]) {
-        const p = glbParts(palm, hgt, 'tree', { bend: true, leanH: { value: hgt }, thicken: 1.5 });
-        if (p) reg('palm', add({ cat: 'tree', name: 'palmier', parts: p.parts, h: p.h, trunkR: 0.3, crownR: p.r, lean: true }));
-      }
+      const p = glbParts(palm, 10, 'tree', { bend: true, leanH: { value: 10 }, thicken: 1.5 });
+      if (p) reg('palm', add({ cat: 'tree', name: 'palmier', parts: p.parts, h: p.h, trunkR: 0.3, crownR: p.r, lean: true }));
     }
     // --- pack de plantes : séparation plante par plante ---
     const pack = glb('plants');
@@ -238,25 +218,14 @@ export class Flora {
     realParts(glb('grass2'), (n) => /(mid|large|tall)/.test(n), 3.0, 'grass', { maxTris: 900 });
     realParts(glb('othonna'), null, 1.0, 'othonna', { maxTris: 1600 });
     realParts(glb('roots'), null, 1.0, 'roots', { still: true });
+    // fourré de bord de piste (cartes de l'atlas, ~70 triangles) : mur de végétation le long des routes
+    { const t = makeThicket(A, 777); reg('thicket', add({ cat: 'bush', name: 'fourré', parts: [{ geo: t.b.build(), mat: this.atlasBush }], h: t.h, crownR: t.r })); }
     progress(0.3, 'Grands arbres de la jungle…');
-    // --- grand tronc scanné + couronne de vraies feuilles ---
-    // grands arbres : un seul fût d'écorce continu du sol à la couronne (évasé à la base, contreforts),
-    // plus de pied scanné qui faisait des cassures dans le tronc
-    for (let k = 0; k < 4; k++) {
-      const rnd = mulberry32(950 + k * 13), b = new GeoBuilder();
-      const r = 0.5 + k * 0.06, top = 14 + k * 1.6, CR = 7 + k * 0.7;
-      const lean = [(rnd() - 0.5) * 1.4, (rnd() - 0.5) * 1.4];
-      tube(b, [new V3(0, -0.4, 0), new V3(0, 0.6, 0), new V3(lean[0] * 0.15, 2.2, lean[1] * 0.15), new V3(lean[0] * 0.5, top * 0.45, lean[1] * 0.5), new V3(lean[0] * 0.8, top * 0.8, lean[1] * 0.8), new V3(lean[0], top, lean[1])],
-        [r * 2.1, r * 1.55, r * 1.12, r * 0.95, r * 0.78, r * 0.6], 12, A.treeBark, 2.4, { ao0: 0.5, ao1: 0.9, flex1: 0.03 });
-      // contreforts : racines plates qui partent du tronc et plongent dans le sol
-      const nR = 4 + (k % 2);
-      for (let q = 0; q < nR; q++) {
-        const a = (q / nR) * Math.PI * 2 + rnd() * 0.6, ca = Math.cos(a), sa = Math.sin(a), L = 1.6 + rnd() * 1.2;
-        tube(b, [new V3(ca * r * 0.6, 1.8 + rnd() * 0.6, sa * r * 0.6), new V3(ca * (r + L * 0.45), 0.5, sa * (r + L * 0.45)), new V3(ca * (r + L), -0.25, sa * (r + L))],
-          [r * 0.42, r * 0.28, r * 0.1], 6, A.treeBark, 1.6, { ao0: 0.55, ao1: 0.75 });
-      }
-      const geo = makeCanopy(A, 900 + k, top - 0.5, CR, b);
-      reg('giant', add({ cat: 'tree', name: 'grand arbre', parts: [{ geo, mat: this.atlasTree }], h: top + CR * 0.8, trunkR: r * 1.3, crownR: CR + 1 }));
+    // --- grands arbres : 6 silhouettes (fût tortueux, contreforts, grosses branches en biais, dômes de feuillage) ---
+    // les deux derniers styles penchent leur couronne vers +X : on les tourne vers la piste pour former un tunnel
+    for (let k = 0; k < GIANT_STYLES.length; k++) {
+      const t = makeGiant(A, 950 + k * 13, k);
+      reg(GIANT_STYLES[k].lean ? 'lean' : 'giant', add({ cat: 'tree', name: 'grand arbre', style: GIANT_STYLES[k].name, parts: [{ geo: t.b.build(), mat: this.atlasTree }], h: t.h, trunkR: t.trunkR, crownR: t.crownR, off: t.off }));
     }
     // Seuls les modèles .glb du joueur sont affichés. Les versions générées ne servent que de secours
     // si un modèle n'a pas pu être chargé (sinon l'île serait vide).
@@ -287,6 +256,8 @@ export class Flora {
     const nrm = new V3();
     let trees = 0, bushes = 0;
     const TC = 4.6;
+    // tirages propres aux arbres de bord de piste (la suite principale reste inchangée ailleurs)
+    const rl = mulberry32(5151), D8 = Array.from({ length: 8 }, (_, k) => [Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4)]);
     for (let gz = -W / 2; gz < W / 2; gz += TC) for (let gx = -W / 2; gx < W / 2; gx += TC) {
       const x = gx + rnd() * TC, z = gz + rnd() * TC, h = T.height(x, z);
       if (h < 0.9 || h > 285) continue;
@@ -295,13 +266,19 @@ export class Flora {
       T.normal(x, z, nrm, 2);
       const slope = 1 - nrm.y, nz = vnoise(x * 0.012, z * 0.012), nz2 = vnoise(x * 0.05 + 9, z * 0.05 - 3);
       const beach = 1.7 + vnoise(x * 0.045, z * 0.045) * 1.3;
+      // bord de piste : de quel côté passe la route (masque « chemin » échantillonné à 6 m dans 8 directions)
+      let rx = 0, rz = 0, rm = 0;
+      if (h > 3) for (const [cx, cz] of D8) { const m = T.mask(T.path, x + cx * 6, z + cz * 6); rx += cx * m; rz += cz * m; rm = Math.max(rm, m); }
+      const roadside = rm > 0.3;
       let p, list;
-      if (h < beach) { p = 0.05; list = [['palm', 1]]; }
-      else if (h < 10) { p = 0.42; list = [['palm', 7], ['ppalm', 1.5], ['giant', 0.5]]; }
-      else if (h < 175) { p = 0.5 * (0.75 + nz * 0.5); list = [['giant', 2.4], ['palm', 2.2], ['ppalm', 2.0]]; }
+      // haut de plage : rangées serrées de cocotiers ; arrière-plage : palmiers ; jungle : surtout de grands feuillus
+      if (h < beach) { p = h > 1.3 ? 0.34 : 0.06; list = [['palm', 1]]; }
+      else if (h < 10) { p = 0.48; list = [['palm', 7], ['ppalm', 1.5], ['giant', 1.0]]; }
+      else if (h < 175) { p = 0.5 * (0.75 + nz * 0.5); list = [['giant', 3.6], ['palm', 1.1], ['ppalm', 1.0]]; }
       else { p = 0.2 * (1 - smoothstep(220, 285, h)); list = [['ppalm', 1.2], ['palm', 0.6], ['giant', 0.4]]; }
       if (wet > 0.55) p *= 0.12;
-      if (h > 3 && Math.max(T.mask(T.path, x + 5, z), T.mask(T.path, x - 5, z), T.mask(T.path, x, z + 5), T.mask(T.path, x, z - 5)) > 0.3) p = Math.max(p, 0.7);
+      // grands arbres penchés au-dessus de la piste (tronc hors de la route) : la voûte se referme en tunnel
+      if (roadside) { p = Math.max(p, 0.75); if (h > Math.max(beach + 1, 3.5) && T.mask(T.path, x, z) < 0.12) list = [['lean', 3.2], ['giant', 0.9], ['palm', 0.7], ['ppalm', 0.4]]; }
       if (slope > 0.5) p *= 0.2;
       p *= 0.75 + nz2 * 0.5;
       if (rnd() > p * this.q.density) continue;
@@ -312,10 +289,18 @@ export class Flora {
       if (arch === 'palm') {
         // chaque palmier a sa propre direction ; seuls ceux du bord de mer penchent plutôt vers l'eau
         lean = h < 5 ? 0.2 + rnd() * 0.55 : rnd() * 0.35;
-        if (h < 5 && rnd() < 0.6) { const dx = -nrm.x, dz = -nrm.z, l = Math.hypot(dx, dz); if (l > 0.01) rot = Math.atan2(-dz / l, dx / l) + (rnd() - 0.5) * 2.2; }
+        if (h < 5 && rnd() < 0.85) { const dx = -nrm.x, dz = -nrm.z, l = Math.hypot(dx, dz); if (l > 0.01) rot = Math.atan2(-dz / l, dx / l) + (rnd() - 0.5) * 1.3; }
+      }
+      let s = 0.82 + rnd() * 0.36;
+      // palmiers : trois classes de hauteur (8,5 / 10 / 11,5 m) tirées de la position
+      if (arch === 'palm') s *= [0.85, 1, 1.15][Math.floor(hash2(Math.floor(x * 7), Math.floor(z * 7)) * 3)];
+      if (arch === 'lean') {
+        // couronne tournée vers la route, assez haute pour laisser passer le buggy
+        rot = Math.atan2(-rz, rx) + (rl() - 0.5) * 0.5;
+        s = 0.95 + rl() * 0.2;
       }
       I.ta.push(0); I.ax.push(0); I.az.push(0);
-      I.x.push(x); I.y.push(h - 0.08); I.z.push(z); I.r.push(rot); I.s.push(0.82 + rnd() * 0.36); I.t.push(type); I.c.push(0.84 + rnd() * 0.28); I.l.push(lean);
+      I.x.push(x); I.y.push(h - 0.08); I.z.push(z); I.r.push(rot); I.s.push(s); I.t.push(type); I.c.push(0.84 + rnd() * 0.28); I.l.push(lean);
       trees++;
     }
     const BC = 1.8;
@@ -336,7 +321,12 @@ export class Flora {
       else if (h < 190) { p = 0.98 * (0.7 + nz * 0.5); list = [['fern', 6], ['grass', 2], ['roots', wet > 0.05 ? 0.5 : 0.18], ['othonna', 0.15]]; }
       else { p = 0.4; list = [['othonna', 2], ['grass', 2]]; }
       if (clear > 0.3) { p = 0.85; list = [['grass', 4], ['fern', 0.5]]; }
-      if (edge && h > beach + 0.3) { p = 1.2; list = [['fern', 3], ['grass', 2]]; }
+      if (edge && h > beach + 0.3) {
+        // lisière : fourrés serrés (mur de feuillage) si la route est à plus de 2 m, fougères et herbes devant
+        p = 1.2;
+        const close = Math.max(T.mask(T.path, x + 2, z), T.mask(T.path, x - 2, z), T.mask(T.path, x, z + 2), T.mask(T.path, x, z - 2));
+        list = close < 0.3 ? [['thicket', 3.5], ['fern', 2], ['grass', 1]] : [['fern', 3], ['grass', 2]];
+      }
       if (wet > 0.75) p *= 0.3;
       if (slope > 0.55) p *= 0.3;
       if (rnd() > p * this.q.density) continue;
@@ -381,7 +371,12 @@ export class Flora {
   }
   canopyList() {
     const out = [], I = this.I;
-    for (let i = 0; i < I.n; i++) { const t = this.types[I.t[i]]; if (t.cat === 'tree' && !this.dead[i]) out.push({ x: I.x[i], z: I.z[i], r: t.crownR * I.s[i] * 0.95 }); }
+    for (let i = 0; i < I.n; i++) {
+      const t = this.types[I.t[i]];
+      if (t.cat !== 'tree' || this.dead[i]) continue;
+      const o = (t.off || 0) * I.s[i];
+      out.push({ x: I.x[i] + Math.cos(I.r[i]) * o, z: I.z[i] - Math.sin(I.r[i]) * o, r: t.crownR * I.s[i] * 0.95 });
+    }
     return out;
   }
   // Couronnes de palmiers proches d'un point (perchoirs pour les oiseaux)
@@ -450,7 +445,7 @@ export class Flora {
       const m = new THREE.ShaderMaterial({
         uniforms: { map: { value: mat.map }, uColor: { value: mat.color || new THREE.Color(1, 1, 1) }, uAT: { value: mat.alphaTest || 0 } },
         defines: { HAS_MAP: mat.map ? 1 : 0, VC: mat.vertexColors ? 1 : 0 },
-        vertexShader: 'attribute vec3 color;\nvarying vec2 vUv; varying vec3 vN; varying vec3 vC;\nvoid main(){ vUv = uv; vN = normal;\n#if VC\n vC = color;\n#else\n vC = vec3(1.0);\n#endif\n gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        vertexShader: 'attribute vec3 color;\nvarying vec2 vUv; varying vec3 vN; varying vec3 vC;\nvoid main(){ vUv = uv; vN = mat3(modelMatrix) * normal;\n#if VC\n vC = color;\n#else\n vC = vec3(1.0);\n#endif\n gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
         fragmentShader: `uniform sampler2D map; uniform vec3 uColor; uniform float uAT; varying vec2 vUv; varying vec3 vN; varying vec3 vC;
           void main(){ vec4 c = vec4(uColor, 1.0);
           #if HAS_MAP
@@ -474,8 +469,9 @@ export class Flora {
         if (tile >= GRIDN * GRIDN) return;
         sc.clear();
         const box = new THREE.Box3();
-        for (const p of t.parts) { const m = new THREE.Mesh(p.geo, capMat(p.mat, mode)); sc.add(m); p.geo.computeBoundingBox(); box.union(p.geo.boundingBox); }
-        const hw = Math.max(Math.abs(box.min.x), Math.abs(box.max.x), Math.abs(box.min.z), Math.abs(box.max.z)) * 1.02;
+        // arbre penché : vu dans l'axe du penchant (couronne centrée), l'imposteur est ensuite posé sous la couronne
+        for (const p of t.parts) { const m = new THREE.Mesh(p.geo, capMat(p.mat, mode)); if (t.off) m.rotation.y = -Math.PI / 2; sc.add(m); p.geo.computeBoundingBox(); box.union(p.geo.boundingBox); }
+        const hw = (t.off ? Math.max(Math.abs(box.min.z), Math.abs(box.max.z)) : Math.max(Math.abs(box.min.x), Math.abs(box.max.x), Math.abs(box.min.z), Math.abs(box.max.z))) * 1.02;
         const top = box.max.y * 1.02, bot = Math.max(box.min.y, -0.3), half = Math.max(hw, (top - bot) / 2);
         cam.left = -half; cam.right = half; cam.bottom = (top + bot) / 2 - half; cam.top = (top + bot) / 2 + half;
         cam.updateProjectionMatrix();
@@ -490,7 +486,7 @@ export class Flora {
     }
     sc.clear();
     r.setRenderTarget(prev); r.setClearColor(pc, pa);
-    const mkLayer = (cap, fade, order) => {
+    const mkLayer = (cap, fade, order, grow) => {
       const g = new THREE.InstancedBufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
       g.setIndex([0, 1, 2, 0, 2, 3]);
@@ -499,10 +495,10 @@ export class Flora {
       g.setAttribute('aI', a1); g.setAttribute('aT', a2);
       g.instanceCount = 0;
       const mat = new THREE.ShaderMaterial({
-        uniforms: { ...U, tA: { value: this.impA.texture }, tN: { value: this.impN.texture }, uFade: fade },
+        uniforms: { ...U, tA: { value: this.impA.texture }, tN: { value: this.impN.texture }, uFade: fade, uGrow: { value: grow } },
         vertexShader: /* glsl */`
           ${GLSL_COMMON}
-          attribute vec4 aI; attribute vec2 aT; uniform vec2 uFade;
+          attribute vec4 aI; attribute vec2 aT; uniform vec2 uFade; uniform vec3 uGrow;
           varying vec2 vUv; varying vec3 vWP; varying vec3 vR; varying vec3 vF; varying vec3 vUpB; varying float vTint; varying float vD;
           void main() {
             vec3 toC = normalize(uCamPos - aI.xyz);
@@ -513,8 +509,11 @@ export class Flora {
             vec3 f = normalize(mix(fh, toC, k));
             vec3 r = normalize(cross(up, f));
             float sway = sin(uTime * 1.2 + aI.x * 0.07) * 0.03 * uWind * position.y;
-            vec3 pivot = aI.xyz + vec3(0.0, 0.5 * aI.w * k, 0.0) - up * 0.5 * aI.w * k;
-            vec3 p = pivot + r * (position.x + sway) * aI.w + up * position.y * aI.w;
+            // au loin, les arbres s'élargissent (et grandissent un peu) : couronnes fusionnées, île bien verte
+            float far = smoothstep(uGrow.z, uGrow.z * 5.0, distance(uCamPos, aI.xyz));
+            float wx = aI.w * (1.0 + uGrow.x * far), wy = aI.w * (1.0 + uGrow.y * far);
+            vec3 pivot = aI.xyz + vec3(0.0, 0.5 * wy * k, 0.0) - up * 0.5 * wy * k;
+            vec3 p = pivot + r * (position.x + sway) * wx + up * position.y * wy;
             vUv = (vec2(mod(aT.x, 10.0), floor(aT.x / 10.0)) + vec2(position.x + 0.5, position.y)) / 10.0;
             vWP = p; vR = r; vF = normalize(cross(r, up)); vUpB = up; vTint = aT.y;
             vD = distance(uCamPos, aI.xyz);
@@ -527,15 +526,21 @@ export class Flora {
           varying vec2 vUv; varying vec3 vWP; varying vec3 vR; varying vec3 vF; varying vec3 vUpB; varying float vTint; varying float vD;
           void main() {
             vec4 a = texture2D(tA, vUv);
-            if (a.a < 0.32) discard;
+            // l'atlas est capturé sur fond noir transparent : le filtrage mélange ce noir aux bords des feuilles,
+            // on le retire en divisant par l'alpha filtré (aucun liseré sombre, même avec les mipmaps)
+            if (a.a < 0.45) discard;
+            a.rgb /= a.a;
             float fin = smoothstep(uFade.x, uFade.y, vD);
             if (fin < bayer4(gl_FragCoord.xy)) discard;
             vec3 alb = a.rgb * a.rgb * vTint;
-            vec3 nn = texture2D(tN, vUv).xyz * 2.0 - 1.0;
+            vec4 nt = texture2D(tN, vUv);
+            vec3 nn = nt.xyz / max(nt.a, 1e-3) * 2.0 - 1.0;
             vec3 n = normalize(vR * nn.x + vUpB * nn.y + vF * nn.z);
             vec4 lt = lightAt(vWP);
             float sv = lt.r * lt.b;
-            float ndl = max(dot(n, uSunDir), 0.0) * 0.8 + 0.2 * max(dot(-vF, uSunDir), 0.0);
+            // éclairage enveloppant + lumière transmise à contre-jour : couronnes lointaines lumineuses, pas noires
+            float nd = dot(n, uSunDir);
+            float ndl = max(nd, 0.0) * 0.62 + (nd * 0.5 + 0.5) * 0.22 + 0.3 * max(dot(-vF, uSunDir), 0.0);
             vec3 col = alb * (uSunColor * ndl * sv / 3.14159 + uSkyAmb * (0.55 + 0.45 * n.y) * mix(1.0, 0.6, lt.g));
             gl_FragColor = vec4(applyAerial(col, vWP), 1.0);
           }`,
@@ -546,8 +551,8 @@ export class Flora {
       this.scene.add(mesh);
       return { g, a1, a2, mesh };
     };
-    this.impTree = mkLayer(this.count.trees + 16, FADE_TREE, 0);
-    this.impBush = mkLayer(Math.min(this.count.bushes, 60000) + 16, FADE_BUSH, 0);
+    this.impTree = mkLayer(this.count.trees + 16, FADE_TREE, 0, new THREE.Vector3(0.9, 0.3, 90));
+    this.impBush = mkLayer(Math.min(this.count.bushes, 60000) + 16, FADE_BUSH, 0, new THREE.Vector3(0.35, 0.15, 40));
   }
 
   // un arbre percuté oscille puis se stabilise
@@ -582,8 +587,8 @@ export class Flora {
     for (let cz = 0; cz < GN; cz++) for (let cx = 0; cx < GN; cx++) {
       const c = cz * GN + cx;
       if (!this.cells[c].length) continue;
-      box.min.set(-W / 2 + cx * GC - 14, this.cellH[c * 2], -W / 2 + cz * GC - 14);
-      box.max.set(box.min.x + GC + 28, this.cellH[c * 2 + 1] + 2, box.min.z + GC + 28);
+      box.min.set(-W / 2 + cx * GC - 20, this.cellH[c * 2], -W / 2 + cz * GC - 20);
+      box.max.set(box.min.x + GC + 40, this.cellH[c * 2 + 1] + 2, box.min.z + GC + 40);
       if (!fr.intersectsBox(box)) continue;
       const dx = Math.max(box.min.x - cam.x, 0, cam.x - box.max.x), dz = Math.max(box.min.z - cam.z, 0, cam.z - box.max.z);
       const cd2 = dx * dx + dz * dz;
@@ -598,8 +603,8 @@ export class Flora {
         if (ty.cat === 'tree') {
           if (d2 < RT2) { const g = this.groups[t]; if (g.d.length / 2 < g.cap) g.d.push(d2, i); }
           if (d2 > RTin && info) {
-            const s = I.s[i];
-            tA[nT * 4] = I.x[i]; tA[nT * 4 + 1] = I.y[i] + info.yMin * s; tA[nT * 4 + 2] = I.z[i]; tA[nT * 4 + 3] = info.size * s;
+            const s = I.s[i], o = (ty.off || 0) * s;
+            tA[nT * 4] = I.x[i] + Math.cos(I.r[i]) * o; tA[nT * 4 + 1] = I.y[i] + info.yMin * s; tA[nT * 4 + 2] = I.z[i] - Math.sin(I.r[i]) * o; tA[nT * 4 + 3] = info.size * s;
             tB[nT * 2] = info.tile; tB[nT * 2 + 1] = I.c[i]; nT++;
           }
         } else {
@@ -615,7 +620,7 @@ export class Flora {
     const SR2 = q.shadow * q.shadow;
     this.groups.forEach((g, t) => {
       const d = g.d, n = d.length / 2;
-      if (!n) { for (const m of g.meshes) { m.count = 0; m.shadowCount = 0; } return; }
+      if (!n) { for (const m of g.meshes) { m.count = 0; m.shadowCount = 0; m.visible = false; } return; }
       const order = Array.from({ length: n }, (_, k) => k).sort((a, b) => d[a * 2] - d[b * 2]);
       const A = g.matAttr.array, C = g.colAttr.array, L = g.leanAttr ? g.leanAttr.array : null;
       let sc = 0;
@@ -638,7 +643,7 @@ export class Flora {
       g.matAttr.needsUpdate = true; g.matAttr.clearUpdateRanges(); g.matAttr.addUpdateRange(0, n * 16);
       g.colAttr.needsUpdate = true; g.colAttr.clearUpdateRanges(); g.colAttr.addUpdateRange(0, n * 3);
       if (g.leanAttr) { g.leanAttr.needsUpdate = true; }
-      for (const m of g.meshes) { m.count = n; m.shadowCount = sc; }
+      for (const m of g.meshes) { m.count = n; m.shadowCount = sc; m.visible = true; }
     });
     for (const [layer, n] of [[this.impTree, nT], [this.impBush, nB]]) {
       layer.g.instanceCount = n;

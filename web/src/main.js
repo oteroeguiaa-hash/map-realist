@@ -609,6 +609,7 @@ async function boot() {
         action: act, tools: G.mode === 'foot' && !drone && (player.inv.length > 0 || builder.active), fps: G.fpsAvg,
       });
       camera.updateMatrixWorld();
+      post.updateSun(camera, U.uSunDir.value); // rayons de soleil
       post.render(dt, U.uTime.value, G.expo);
       // performance & résolution dynamique
       if (dt > 0) { ftAcc += dt; ftN++; }

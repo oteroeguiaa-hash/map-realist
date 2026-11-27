@@ -354,6 +354,177 @@ function makeDead(A, seed) {
   return { b, h: H + 1, trunkR: R0 * 1.3, crownR: 2, kind: 'tree' };
 }
 
+// ---------- grands arbres de la jungle ----------
+// Fût tortueux évasé à la base (contreforts), grosses branches qui partent en biais puis se redressent,
+// couronne faite de dômes de feuillage au bout des branches : des gerbes de rameaux qui rayonnent vers
+// l'extérieur (vues d'en dessous, elles ferment la voûte) et, sur les bords, des rameaux qui retombent.
+// Les styles « penchés » (lean > 0) ont leur couronne décalée vers +X : au bord des pistes, ils forment un tunnel.
+// r : rayon du fût, fork : hauteur de la fourche, limbs : maîtresses branches, el : écart à la verticale (rad),
+// len : longueur des branches, sub : rameaux secondaires par branche, cr : rayon d'un dôme de feuillage
+export const GIANT_STYLES = [
+  { name: 'parasol', r: 0.6, fork: 4.6, limbs: 3, el: [0.85, 1.1], len: [7, 8.5], sub: 2, cr: 3.2, lean: 0 },
+  { name: 'fourche', r: 0.56, fork: 6.5, limbs: 2, el: [0.5, 0.72], len: [8, 9.5], sub: 3, cr: 3.1, lean: 0 },
+  { name: 'banian', r: 0.4, fork: 5.2, limbs: 2, el: [0.6, 0.95], len: [6, 7.2], sub: 2, cr: 2.9, lean: 0, stems: 3 },
+  { name: 'émergent', r: 0.5, fork: 10, limbs: 4, el: [0.75, 1.0], len: [5.5, 6.5], sub: 2, cr: 3.0, lean: 0 },
+  { name: 'penché', r: 0.52, fork: 4.4, limbs: 3, el: [0.9, 1.2], len: [6.5, 8], sub: 2, cr: 3.1, lean: 0.4 },
+  { name: 'arche', r: 0.5, fork: 3.6, limbs: 3, el: [1.0, 1.3], len: [7.5, 9], sub: 2, cr: 3.1, lean: 0.55 },
+];
+// Ligne tortueuse : part de p0 vers d0, se redresse (rise > 0) peu à peu, avec des coudes aléatoires
+function gnarl(rnd, p0, d0, len, n, rise, kink) {
+  const pts = [p0.clone()], d = d0.clone().normalize(), p = p0.clone();
+  for (let i = 1; i <= n; i++) {
+    d.x += (rnd() - 0.5) * kink; d.z += (rnd() - 0.5) * kink; d.y += rise + (rnd() - 0.5) * kink * 0.4;
+    d.normalize();
+    p.addScaledVector(d, len / n);
+    pts.push(p.clone());
+  }
+  return pts;
+}
+function makeGiant(A, seed, style) {
+  const S = GIANT_STYLES[style % GIANT_STYLES.length];
+  const rnd = mulberry32(seed), b = new GeoBuilder();
+  const bark = A.treeBark, r = S.r * (0.92 + rnd() * 0.16);
+  const tips = []; // bouts de branches : centres des dômes de feuillage
+  const dirAt = (pts, i) => pts[Math.min(i + 1, pts.length - 1)].clone().sub(pts[Math.max(i - 1, 0)]).normalize();
+  // maîtresse branche + rameaux secondaires ; az : direction (rad), el : écart à la verticale
+  const limb = (start, az, el, len, rl, ph) => {
+    const d = new V3(Math.cos(az) * Math.sin(el), Math.cos(el), Math.sin(az) * Math.sin(el));
+    const pts = gnarl(rnd, start, d, len, 3, 0.1, 0.32);
+    tube(b, pts, [rl, rl * 0.78, rl * 0.58, rl * 0.4], 6, bark, 2.8, { ao0: 0.62, ao1: 0.9, flex0: 0.04, flex1: 0.16, phase: ph });
+    tips.push({ p: pts[3], k: 0.9 });
+    // dôme à mi-branche (pas trop bas au-dessus d'une piste pour les arbres penchés)
+    if (!S.lean || pts[2].y > 6.8) tips.push({ p: pts[2], k: 0.8 });
+    for (let s = 0; s < S.sub; s++) {
+      const i = s === 0 ? 3 : 2, p0 = pts[i - 1].clone().lerp(pts[i], 0.7), dd = dirAt(pts, i);
+      const a2 = Math.atan2(dd.z, dd.x) + (s % 2 ? 1 : -1) * (0.6 + rnd() * 0.5);
+      const e2 = clamp(Math.acos(clamp(dd.y, -1, 1)) + (rnd() - 0.6) * 0.5, 0.35, 1.35);
+      const d2 = new V3(Math.cos(a2) * Math.sin(e2), Math.cos(e2), Math.sin(a2) * Math.sin(e2));
+      const q = gnarl(rnd, p0, d2, len * (0.42 + rnd() * 0.15), 2, 0.12, 0.35);
+      tube(b, q, [rl * 0.42, rl * 0.28, rl * 0.12], 4, bark, 2.8, { ao0: 0.75, ao1: 0.95, flex0: 0.14, flex1: 0.3, phase: ph + 0.3 * s });
+      if (!S.lean || q[2].y > 6) tips.push({ p: q[2], k: 1 });
+    }
+  };
+  // fût(s) : du sol à la fourche, évasé à la base, penché vers +X pour les styles « penchés »
+  const nStems = S.stems || 1, forks = [];
+  for (let st = 0; st < nStems; st++) {
+    const a0 = (st / nStems) * Math.PI * 2 + rnd() * 0.5, off = nStems > 1 ? r * 0.9 : 0;
+    const tilt = S.lean ? S.lean : nStems > 1 ? 0.18 + rnd() * 0.12 : rnd() * 0.12;
+    const az = S.lean ? (rnd() - 0.5) * 0.3 : nStems > 1 ? a0 : rnd() * Math.PI * 2;
+    const d0 = new V3(Math.cos(az) * Math.sin(tilt), Math.cos(tilt), Math.sin(az) * Math.sin(tilt));
+    const base = new V3(Math.cos(a0) * off, 0.5, Math.sin(a0) * off);
+    const L = S.fork * (0.9 + rnd() * 0.2) / Math.cos(tilt * 0.7);
+    const pts = [new V3(base.x * 0.6, -0.5, base.z * 0.6), ...gnarl(rnd, base, d0, L, 4, S.lean ? 0.05 : 0.02, nStems > 1 ? 0.3 : 0.22)];
+    const rr = nStems > 1 ? [r * 1.9, r * 1.35, r * 1.1, r, r * 0.95, r * 0.9] : [r * 2.1, r * 1.45, r * 1.15, r * 1.02, r * 0.95, r * 0.88];
+    tube(b, pts, rr, nStems > 1 ? 7 : 9, bark, 3.0, { ao0: 0.45, ao1: 0.88, flex1: 0.03 });
+    forks.push({ p: pts[pts.length - 1], q: pts[pts.length - 2], a0 });
+  }
+  // contreforts : racines plates qui partent du fût et plongent dans le sol
+  const rB = nStems > 1 ? r * 1.6 : r, nR = 3 + Math.floor(rnd() * 3);
+  for (let q = 0; q < nR; q++) {
+    const a = (q / nR) * Math.PI * 2 + rnd() * 0.7, ca = Math.cos(a), sa = Math.sin(a), L = 1.5 + rnd() * 1.4;
+    tube(b, [new V3(ca * rB * 0.5, 1.6 + rnd() * 0.7, sa * rB * 0.5), new V3(ca * (rB + L * 0.45), 0.45, sa * (rB + L * 0.45)), new V3(ca * (rB + L), -0.3, sa * (rB + L))],
+      [rB * 0.42, rB * 0.27, rB * 0.09], 5, bark, 1.6, { ao0: 0.5, ao1: 0.72 });
+  }
+  // maîtresses branches : en biais depuis la fourche ; vers la piste (+X) pour les arbres penchés
+  for (const f of forks) {
+    const nL = S.limbs, rl = r * (nL === 2 ? 0.74 : 0.62) * (nStems > 1 ? 0.9 : 1);
+    const start = f.q.clone().lerp(f.p, 0.75);
+    for (let k = 0; k < nL; k++) {
+      let az = nStems > 1 ? f.a0 + (k - (nL - 1) / 2) * 1.3 + (rnd() - 0.5) * 0.5 : (k / nL) * Math.PI * 2 + rnd() * 0.8;
+      let el = lerp(S.el[0], S.el[1], rnd());
+      // arbre penché : toutes les branches vont vers +X sauf une, plus courte, qui équilibre vers l'arrière
+      if (S.lean) { az = k === nL - 1 ? Math.PI + (rnd() - 0.5) * 0.8 : (k - (nL - 2) / 2) * 1.1 + (rnd() - 0.5) * 0.4; if (k === nL - 1) el *= 0.6; }
+      const len = lerp(S.len[0], S.len[1], rnd()) * (S.lean && k === nL - 1 ? 0.5 : 1);
+      limb(start, az, el, len, rl, rnd());
+    }
+  }
+  // racines aériennes du banian
+  if (nStems > 1) for (let k = 0; k < 3; k++) {
+    const t = tips[Math.floor(rnd() * tips.length)].p, x = t.x * (0.45 + rnd() * 0.3), z = t.z * (0.45 + rnd() * 0.3);
+    tube(b, [new V3(x * 1.08, -0.3, z * 1.08), new V3(x + (rnd() - 0.5) * 0.6, t.y * 0.4, z + (rnd() - 0.5) * 0.6), new V3(x * 0.97, t.y * 0.78, z * 0.97)], [0.09, 0.05, 0.04], 4, bark, 2.8, { ao0: 0.55, ao1: 0.7 });
+  }
+  // couronne : centre, rayon, puis dômes de feuillage
+  const crownC = new V3();
+  for (const t of tips) crownC.add(t.p);
+  crownC.multiplyScalar(1 / tips.length);
+  // deux dômes au centre pour fermer la voûte au-dessus de la fourche
+  for (let k = 0; k < 3; k++) tips.push({ p: crownC.clone().add(new V3((rnd() - 0.5) * 4, 1.2 + rnd() * 1.4, (rnd() - 0.5) * 4)), k: 0.95 });
+  let CR = 0, yMin = 1e9, yMax = -1e9;
+  for (const t of tips) { CR = Math.max(CR, Math.hypot(t.p.x - crownC.x, t.p.z - crownC.z)); yMin = Math.min(yMin, t.p.y); yMax = Math.max(yMax, t.p.y); }
+  CR += S.cr;
+  const aoFn = (q) => {
+    const rad = clamp(Math.hypot(q.x - crownC.x, q.z - crownC.z) / CR, 0, 1), up = clamp((q.y - yMin + S.cr) / (yMax - yMin + S.cr * 2), 0, 1);
+    return 0.52 + 0.48 * clamp(rad * 0.55 + up * 0.6, 0, 1);
+  };
+  const main = rnd() < 0.6 ? A.clusterA : A.clusterB, other = main === A.clusterA ? A.clusterB : A.clusterA;
+  const HUES = [[1, 1, 1], [1.08, 1.05, 0.78], [0.95, 1.02, 0.85], [1.02, 1.04, 0.9]];
+  for (const t of tips) {
+    const c = t.p.clone(), cr = S.cr * t.k * (0.9 + rnd() * 0.25);
+    c.y += cr * 0.25;
+    const out = c.clone().sub(crownC); out.y = 0;
+    if (out.lengthSq() < 0.01) out.set(rnd() - 0.5, 0, rnd() - 0.5);
+    out.normalize();
+    const nrmC = c.clone().lerp(crownC, 0.5);
+    const v0 = b.count, ph = rnd(), N = 10;
+    // arbre penché : les dômes bas (au-dessus de la piste) ne retombent pas, pour laisser passer le buggy
+    const eMin = S.lean && c.y < 9 ? 0.05 : -0.45;
+    for (let k = 0; k < N; k++) {
+      // gerbes réparties sur un dôme, plutôt vers l'extérieur de la couronne ; les plus basses retombent
+      const az = (k / N) * Math.PI * 2 + rnd() * 0.7, e = k === 0 ? 1.35 : lerp(eMin, 1.1, rnd());
+      const d = new V3(Math.cos(az) * Math.cos(e), Math.sin(e), Math.sin(az) * Math.cos(e)).addScaledVector(out, 0.55).normalize();
+      const low = d.y < 0.15;
+      const side = Math.abs(d.y) > 0.97 ? new V3(Math.cos(az), 0, Math.sin(az)) : new V3(-d.z, 0, d.x).normalize();
+      side.applyAxisAngle(d, (rnd() - 0.5) * 1.5); // roulis : de « à plat » à « de chant »
+      const len = cr * (1.45 + rnd() * 0.35);
+      bentCard(b, c.clone().addScaledVector(d, -cr * 0.3), d, side, len, len * (0.95 + rnd() * 0.15), rnd() < 0.78 ? main : other,
+        { segs: low ? 2 : 1, droop: low ? 0.3 + rnd() * 0.25 : 0, center: nrmC, normalBlend: 0.6, aoFn, flex0: 0.35, flexT: 0.55, phase: ph });
+    }
+    // teinte du dôme : vert profond, olive ou jaune-vert (variété naturelle, jamais fluo)
+    const hue = HUES[Math.floor(rnd() * HUES.length)];
+    for (let i = v0; i < b.count; i++) { b.c[i * 3] *= hue[0]; b.c[i * 3 + 1] *= hue[1]; b.c[i * 3 + 2] *= hue[2]; }
+  }
+  let h = 0;
+  for (let i = 1; i < b.p.length; i += 3) h = Math.max(h, b.p[i]);
+  return { b, h, trunkR: nStems > 1 ? r * 2.2 : r * 1.35, crownR: CR, off: S.lean ? crownC.x : 0, crownC, kind: 'tree' };
+}
+
+// Fourré de bord de piste : mur de feuillage de 3 à 4 m (dômes de rameaux) et grandes feuilles au pied.
+// Très peu de triangles (des cartes), posé serré le long des routes pour une lisière nette et touffue.
+function makeThicket(A, seed) {
+  const rnd = mulberry32(seed), b = new GeoBuilder();
+  const H = 3.4, R = 1.9, C = new V3(0, H * 0.55, 0);
+  const aoFn = (q) => 0.45 + 0.55 * clamp(q.y / H, 0, 1) * (0.7 + 0.3 * clamp(Math.hypot(q.x, q.z) / R, 0, 1));
+  const HUES = [[1, 1, 1], [1.04, 1.02, 0.82], [0.9, 0.97, 0.88]];
+  // dômes : un au centre en hauteur, quatre autour plus bas
+  const domes = [new V3(0, H * 0.72, 0)];
+  for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI * 2 + rnd() * 0.8, d = R * (0.45 + rnd() * 0.25); domes.push(new V3(Math.cos(a) * d, H * (0.38 + rnd() * 0.15), Math.sin(a) * d)); }
+  for (const c of domes) {
+    const v0 = b.count, N = 5, cr = 1.15 + rnd() * 0.3, out = new V3(c.x, 0, c.z);
+    if (out.lengthSq() < 0.01) out.set(0, 1, 0); else out.normalize();
+    for (let k = 0; k < N; k++) {
+      const az = (k / N) * Math.PI * 2 + rnd() * 0.8, e = lerp(-0.3, 1.2, rnd());
+      const d = new V3(Math.cos(az) * Math.cos(e), Math.sin(e), Math.sin(az) * Math.cos(e)).addScaledVector(out, 0.5).normalize();
+      const side = Math.abs(d.y) > 0.97 ? new V3(Math.cos(az), 0, Math.sin(az)) : new V3(-d.z, 0, d.x).normalize();
+      side.applyAxisAngle(d, (rnd() - 0.5) * 1.6);
+      const len = cr * (1.35 + rnd() * 0.3);
+      bentCard(b, c.clone().addScaledVector(d, -cr * 0.3), d, side, len, len, rnd() < 0.6 ? A.clusterA : A.clusterB,
+        { segs: 1, center: C, normalBlend: 0.6, aoFn, flex0: 0.3, flexT: 0.5, phase: rnd() });
+    }
+    const hue = HUES[Math.floor(rnd() * HUES.length)];
+    for (let i = v0; i < b.count; i++) { b.c[i * 3] *= hue[0]; b.c[i * 3 + 1] *= hue[1]; b.c[i * 3 + 2] *= hue[2]; }
+  }
+  // grandes feuilles (bananier, anthurium) qui débordent au pied du fourré
+  for (let k = 0; k < 5; k++) {
+    const az = (k / 5) * Math.PI * 2 + rnd() * 0.7, el = 0.35 + rnd() * 0.5;
+    const dir = new V3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
+    const side = new V3(-Math.sin(az), 0, Math.cos(az)), big = k < 3;
+    const len = big ? 1.5 + rnd() * 0.6 : 0.9 + rnd() * 0.3;
+    bentCard(b, new V3(Math.cos(az) * R * 0.35, 0.05, Math.sin(az) * R * 0.35), dir, side, len, big ? len * 0.42 : len * 0.9, big ? A.banana : A.anthurium,
+      { segs: 2, droop: 0.4, center: new V3(0, 0.6, 0), normalBlend: 0.4, flex0: 0.15, flexT: 0.6, phase: rnd(), alongU: big, aoFn: (q) => 0.55 + 0.45 * clamp(q.y / 1.5, 0, 1) });
+  }
+  return { b, h: H + 0.6, r: R + 0.6, kind: 'bush' };
+}
+
 // ---------- buissons ----------
 function radialCards(b, rnd, n, rect, len, wid, el0, el1, droop, segs, opts = {}) {
   const c = new V3(0, len * 0.35, 0);
@@ -804,4 +975,4 @@ export class Vegetation {
 }
 
 function tick() { return new Promise((r) => setTimeout(r, 0)); }
-export { lerp, makePalm, makeBroadleaf, makeTreeFern, makeBanana, makeBush, makePandanus, makeDead, tube, cluster, bentCard, uvr, sub };
+export { lerp, makeGiant, makeThicket, makePalm, makeBroadleaf, makeTreeFern, makeBanana, makeBush, makePandanus, makeDead, tube, cluster, bentCard, uvr, sub };

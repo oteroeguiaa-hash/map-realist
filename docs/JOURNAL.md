@@ -105,3 +105,13 @@ Une entrée par session : ce qui a été fait, captures, performances mesurées,
 - Relief : bruit en crêtes (ridged multifractal) sur les hauteurs (arêtes et ravins, ±5 m), mousse sur les pentes douces ombragées.
 - Rivières : la surface de l'eau est recalée sur le lit (jamais sous le fond, jamais à plus de 1,2 m au-dessus).
 - Non fait, volontairement : maillage 256 × 256 (le terrain actuel est déjà en 1024 × 1024 avec niveaux de détail) ; triangles d'origine pour l'herbe, les fougères et les rochers (×3 à ×200 triangles, incompatible avec la fluidité sur iPhone).
+
+## 27/11/2026 — Démo web : travail des agents fusionné (eau, cascade, sous-marin, lumière, jungle) + gameplay
+
+- Trois agents en parallèle (eau, lumière, végétation), interrompus par la limite d'utilisation ; leur travail partiel a été relu et fusionné : eau de mer et bord de plage, cascade plus large avec brume et courant, vue sous-marine (caustiques, diffusion), rayons de soleil, panache du volcan, jungle plus dense le long des pistes.
+- Buggy : correctif du modèle tourné de 90°, volant tactile + pédales, éclaboussures fines (gouttelettes, embruns, brume).
+- Animaux plus grands (sanglier 1,85 m…), mouvements du corps (virages, accélération, nage, vol plané), nuées d'oiseaux (240), crocodiles à la cascade, empreintes dans le sable, éclaboussures de pas.
+- Pierre à casser (rivelaine), muret en pierre, projecteur 20 000 lm à construire, mission des jumelles.
+- Îles lointaines en petites silhouettes sombres (9–16 km), gorge rocheuse à trois étages autour de la cascade.
+- Correctifs : un commentaire masquait le compteur d'images (le jeu ne démarrait plus) ; retrait de la compilation anticipée des shaders (bloquait le démarrage). Démarrage mesuré : 20 s (Chromium logiciel).
+- Limite de 16 textures par shader respectée en Bas et Moyen.
