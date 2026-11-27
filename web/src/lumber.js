@@ -46,6 +46,7 @@ export class Lumber {
     this.split = new Map();
     this.mats = new Map();
     this.wood = 0;
+    this.stone = 0; // pierres récoltées sur les rochers
     this.onImpact = null; this.onFell = null; this.onChange = null;
   }
 
@@ -201,11 +202,12 @@ export class Lumber {
   }
 
   save() {
-    return { wood: this.wood, felled: this.fallen.filter((r) => r.done).map((r) => [+r.x.toFixed(2), +r.z.toFixed(2), +r.dir.x.toFixed(3), +r.dir.z.toFixed(3), +r.theta.toFixed(3)]) };
+    return { wood: this.wood, stone: this.stone, felled: this.fallen.filter((r) => r.done).map((r) => [+r.x.toFixed(2), +r.z.toFixed(2), +r.dir.x.toFixed(3), +r.dir.z.toFixed(3), +r.theta.toFixed(3)]) };
   }
   load(data) {
     if (!data) return;
     this.wood = data.wood || 0;
+    this.stone = data.stone || 0;
     for (const [x, z, dx, dz, th] of data.felled || []) {
       const i = this.flora.treeAt(x, z);
       if (i >= 0) this.fell(i, dx, dz, clamp(th, 0.3, 1.9));

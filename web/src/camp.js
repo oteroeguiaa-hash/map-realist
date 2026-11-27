@@ -112,29 +112,24 @@ export class Camp {
       L.target.position.set(c.x, y, c.z);
       this.addLight(L, 600, 512);
     }
-    // --- projecteur portable sur trépied, braqué vers la jungle ---
-    const sl = this.model('searchlight');
+    // --- projecteur portable sur trépied : à CONSTRUIRE par le joueur (caché tant qu'il n'est pas posé) ---
     {
-      const a = toSpawn + Math.PI, x = c.x + Math.sin(a) * (c.r - 2.2), z = c.z + Math.cos(a) * (c.r - 2.2), y = T.height(x, z);
+      const sl = this.model('searchlight');
+      const grp = new THREE.Group();
       const legs = [];
       for (let k = 0; k < 3; k++) { const b = k / 3 * Math.PI * 2; const g = new THREE.CylinderGeometry(0.02, 0.025, 1.7, 6); g.translate(0, 0.85, 0); g.rotateZ(0.32); g.rotateY(b); legs.push(g); }
-      const tri = new THREE.Mesh(mergeGeometries(legs), metal); tri.position.set(x, y, z); tri.castShadow = true; this.group.add(tri);
-      const dir = new V3(Math.sin(a), -0.12, Math.cos(a)).normalize();
-      if (sl) {
-        sl.position.set(x, y + 1.62, z);
-        sl.lookAt(x - dir.x, y + 1.62 - dir.y, z - dir.z); // l'avant du modèle (-z) vers l'extérieur
-        sl.scale.setScalar(2.2); // le modèle mesure 25 cm : à l'échelle d'un vrai projecteur portable
-        this.group.add(sl);
-      }
+      const tri = new THREE.Mesh(mergeGeometries(legs), metal); tri.castShadow = true; grp.add(tri);
+      if (sl) { sl.position.set(0, 1.62, 0); sl.lookAt(0, 1.62 + 0.12, 1); sl.scale.setScalar(2.2); grp.add(sl); } // avant du modèle (-z) vers +z local
+      grp.visible = false;
+      sc.add(grp);
+      this.slGroup = grp;
       const L = new THREE.SpotLight(0xf4f6ff, 0, 160, 0.42, 0.9, 2);
-      L.position.set(x + dir.x * 0.35, y + 1.62, z + dir.z * 0.35);
-      L.target.position.set(x + dir.x * 40, y + 1.62 + dir.y * 40, z + dir.z * 40);
       this.addLight(L, 20000, 1024);
+      this.searchLight = L;
       const beam = makeBeam(55);
-      beam.position.copy(L.position);
-      beam.lookAt(L.target.position); beam.rotateY(Math.PI); // le cône pointe vers -z : on le retourne vers la cible
       beam.scale.set(Math.tan(0.42) * 55, Math.tan(0.42) * 55, 55);
-      this.group.add(beam);
+      beam.visible = false;
+      sc.add(beam);
       this.searchBeam = beam;
     }
     // --- table en rondins + bougeoir ---
@@ -159,6 +154,20 @@ export class Camp {
   }
   // décor fixe : matrices calculées une fois pour toutes
   freeze() { this.group.traverse((o) => { if (o !== this.flame) { o.updateMatrix(); o.matrixAutoUpdate = false; } }); this.group.updateMatrixWorld(true); }
+  // le joueur pose son projecteur : trépied + lumière + faisceau orientés selon rot (vers +z local)
+  placeSearchlight(x, z, rot) {
+    const y = this.T.height(x, z), dir = new V3(Math.sin(rot), -0.1, Math.cos(rot)).normalize();
+    const g = this.slGroup; if (!g) return;
+    g.position.set(x, y, z); g.rotation.y = rot; g.visible = true; g.updateMatrixWorld(true);
+    const L = this.searchLight;
+    L.position.set(x + dir.x * 0.35, y + 1.62, z + dir.z * 0.35);
+    L.target.position.set(x + dir.x * 40, y + 1.62 + dir.y * 40, z + dir.z * 40);
+    L.updateMatrixWorld(); L.target.updateMatrixWorld();
+    const b = this.searchBeam;
+    b.position.copy(L.position); b.lookAt(L.target.position); b.rotateY(Math.PI); b.visible = true; b.updateMatrixWorld(true);
+    this.slPlaced = true; this.slPos = new V3(x, y, z);
+    L.shadow.needsUpdate = true;
+  }
   addLight(L, lumens, map) {
     L.castShadow = this.shadows;
     L.shadow.mapSize.set(map, map);
@@ -180,10 +189,11 @@ export class Camp {
     for (const L of this.lights) {
       let k = this.on;
       if (L === this.candle) k = Math.max(k, 0.6) * (0.85 + Math.sin(this.t * 11) * 0.05 + Math.sin(this.t * 23.7) * 0.04 + Math.sin(this.t * 3.1) * 0.06);
+      if (L === this.searchLight) { const d = this.slPos ? Math.hypot(camPos.x - this.slPos.x, camPos.z - this.slPos.z) : 1e9; L.power = this.slPlaced && d < 200 ? L.userData.lm * this.on : 0; continue; }
       L.power = L.userData.lm * k * (near ? 1 : 0);
     }
     if (this.flame) this.flame.scale.set(1 + Math.sin(this.t * 17) * 0.1, 2.2 + Math.sin(this.t * 13) * 0.3, 1);
-    if (this.searchBeam) this.searchBeam.material.uniforms.uStrength.value = 0.22 * this.on * (near ? 1 : 0);
+    if (this.searchBeam) this.searchBeam.material.uniforms.uStrength.value = this.slPlaced ? 0.22 * this.on : 0;
     this.shT = (this.shT || 0) + dt;
     if (near && this.on > 0.05 && this.shT > 1.5) { this.shT = 0; for (const L of this.lights) L.shadow.needsUpdate = true; }
   }

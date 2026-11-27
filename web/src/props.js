@@ -63,8 +63,9 @@ export class Props {
       const t = TY[k]; if (!t) return;
       const d = Math.max(...t.size), s = (a + rnd() * (b - a)) / d;
       const y = T.height(x, z) - sink * t.size[1] * s;
-      lists[k].push({ x, y, z, s, rot: rnd() * 6.28, tint: 0.85 + rnd() * 0.25, tilt });
-      if (Math.max(t.size[0], t.size[2]) * s > 1.4 && t.name !== 'sandrocks') this.colliders.push({ x, z, r: Math.min(t.size[0], t.size[2]) * s * 0.45, top: y + t.size[1] * s });
+      const it = { x, y, z, s, rot: rnd() * 6.28, tint: 0.85 + rnd() * 0.25, tilt, k, size: Math.max(...t.size) * s };
+      lists[k].push(it);
+      if (Math.max(t.size[0], t.size[2]) * s > 1.4 && t.name !== 'sandrocks') { it.col = { x, z, r: Math.min(t.size[0], t.size[2]) * s * 0.45, top: y + t.size[1] * s }; this.colliders.push(it.col); }
     };
     const ROCKS = keys('nboulder2', 'nboulder5', 'mossrocks'), FACES = keys('rockface', 'ncliff'), MOUNT = keys('mountain', 'ncliff');
     for (let i = 0; i < 26000; i++) {
@@ -132,6 +133,29 @@ export class Props {
     }
   }
 
+  // rocher cassable le plus proche devant le joueur (ni falaise, ni montagne, ni bois)
+  rockAt(x, z, dx, dz, reach = 1.6) {
+    let best = null, bd = 1e9;
+    for (const [k, list] of Object.entries(this.lists || {})) {
+      const name = this.types[k].name;
+      if (!['nboulder2', 'nboulder5', 'mossrocks', 'rockface', 'sandrocks'].includes(name)) continue;
+      for (const it of list) {
+        if (it.dead || it.size > 6) continue;
+        const ex = it.x - x, ez = it.z - z, d = Math.hypot(ex, ez) - it.size * 0.4;
+        if (d > reach || d > bd) continue;
+        if ((ex * dx + ez * dz) / Math.max(Math.hypot(ex, ez), 0.01) < 0.3) continue;
+        bd = d; best = it;
+      }
+    }
+    return best;
+  }
+  // le rocher se brise : il disparaît, son obstacle aussi ; renvoie le nombre de pierres récoltées
+  breakRock(it) {
+    it.dead = true;
+    if (it.col) { const i = this.colliders.indexOf(it.col); if (i >= 0) this.colliders.splice(i, 1); }
+    this.dirty = true;
+    return Math.max(2, Math.round(it.size * 2.2));
+  }
   // noix de coco tombées au pied des palmiers (une seule géométrie instanciée, ~80 triangles)
   addCoconuts(flora) {
     const I = flora.I, rnd = mulberry32(31), T = this.T, list = [];
@@ -263,7 +287,8 @@ export class Props {
     }
     if (this.sock) this.sock.rotation.y = Math.atan2(-0.6, 0.8) + Math.sin(t * 0.9) * 0.15;
     const cam = camera.position;
-    if (cam.distanceToSquared(this.lastCam) < 16) return;
+    if (cam.distanceToSquared(this.lastCam) < 16 && !this.dirty) return;
+    this.dirty = false;
     this.lastCam.copy(cam);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new V3(), p = new V3();
     for (const [name, list] of Object.entries(this.lists)) {
@@ -271,6 +296,7 @@ export class Props {
       let n = 0, shc = 0;
       const near = [];
       for (const it of list) {
+        if (it.dead) continue;
         const dx = it.x - cam.x, dz = it.z - cam.z, d2 = dx * dx + dz * dz;
         if (d2 <= R * R) near.push([d2, it]);
       }

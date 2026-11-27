@@ -17,7 +17,9 @@ import { chooseSites, carvePonds } from './sites.js';
 import { Ponds } from './ponds.js';
 import { makeIslands } from './islands.js';
 import { Camp, makeBeam } from './camp.js';
-import { Builder, PIECES } from './build.js';
+import { Builder, PIECES, costText } from './build.js';
+import { BirdFlocks } from './birds.js';
+import { Footprints } from './footprints.js';
 
 // sauvegarde locale (arbres abattus, bois, constructions) : retrouvée au retour sur ce téléphone
 const SAVE_KEY = 'mapRealist.save.v1';
@@ -179,6 +181,7 @@ async function boot() {
     props.addCoconuts(veg);
     const ponds = new Ponds(scene, data, world.ponds || []);
     G.islands = makeIslands(scene);
+    const birds = new BirdFlocks(scene, 240);
     G.ponds = ponds;
     const camp = new Camp(scene, data, world, bank, props, Q().veg >= 2 && renderer.capabilities.maxTextures >= 24 ? 2 : 0);
     G.camp = camp;
@@ -196,7 +199,18 @@ async function boot() {
     const player = new Player(scene, camera, data, world, veg, props, bank);
     G.player = player;
     // lampe torche et jumelles posées sur la table du campement
-    if (camp.tableTop) { const t = camp.tableTop; player.addPickup('torch', t.x - 0.35, t.y, t.z - 0.1, 0.4); player.addPickup('binoculars', t.x + 0.05, t.y, t.z + 0.12, -0.3); }
+    if (camp.tableTop) { const t = camp.tableTop; player.addPickup('torch', t.x - 0.35, t.y, t.z - 0.1, 0.4); }
+    // mission : les jumelles sont dans la sacoche d'un explorateur, au bord du bassin de la grande cascade
+    const mission = { done: false };
+    {
+      const wf = world.waterfall, a = Math.atan2(wf.dir[1], wf.dir[0]) + 1.1;
+      const mx = wf.pool[0] + Math.cos(a) * (wf.poolR + 5), mz = wf.pool[2] + Math.sin(a) * (wf.poolR + 5), my = data.height(mx, mz);
+      const bag = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.22), new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.8 }));
+      bag.position.set(mx + 0.4, my + 0.14, mz); bag.rotation.y = 0.5; bag.castShadow = true; scene.add(bag);
+      player.addPickup('binoculars', mx, my + 0.02, mz - 0.3, 0.8);
+      mission.pos = new THREE.Vector3(mx, my, mz);
+    }
+    G.mission = mission;
     // ombres des lampes : seulement si la carte graphique accepte assez de textures par shader (pas sur iPhone)
     const localShadows = Q().veg >= 2 && renderer.capabilities.maxTextures >= 24;
     player.torchLight.castShadow = localShadows;
@@ -210,6 +224,7 @@ async function boot() {
     const lumber = new Lumber(scene, veg, data, props);
     const builder = new Builder(scene, data, props);
     builder.init(bank);
+    builder.onSearchlight = (x, z, rot) => camp.placeSearchlight(x, z, rot);
     G.lumber = lumber; G.builder = builder;
     const groundAt = (x, z) => Math.max(data.height(x, z), builder.heightAt(x, z));
     const onBuilt = (x, z) => builder.heightAt(x, z) > data.height(x, z) + 0.03;
@@ -234,10 +249,17 @@ async function boot() {
     const controls = new Controls(canvas, ui);
     const rig = new CameraRig(camera, data);
     G.controls = controls; G.rig = rig;
+    const footprints = new Footprints(scene, data);
+    G.footprints = footprints;
+    let stepSide = 1;
     player.onStep = (v) => {
-      const p = player.pos, h = data.height(p.x, p.z);
-      const kind = player.waterLevel(p.x, p.z) - h > 0.15 ? 'water' : h < 2.2 ? 'sand' : 'leaves';
+      const p = player.pos, h = data.height(p.x, p.z), wl = player.waterLevel(p.x, p.z);
+      const kind = wl - h > 0.05 ? 'water' : h < 2.6 ? 'sand' : 'leaves';
       sound.footstep(kind, clamp(v / 4, 0.4, 1.2));
+      stepSide = -stepSide;
+      // dans l'eau : gerbe d'eau à chaque pas ; sur le sable : empreinte humide
+      if (kind === 'water') fx.burst(new THREE.Vector3(p.x, wl + 0.05, p.z), 6 + Math.round(v * 3), [0.86, 0.93, 0.96], 1.6 + v * 0.3, 1.6 + v * 0.4, 0.08, 0.8);
+      else if (kind === 'sand') footprints.add(p.x, p.z, player.yaw, stepSide);
     };
     buggy.ground = groundAt; buggy.groundNormal = groundNormal; buggy.onBuilt = onBuilt;
     // chocs du buggy : petits arbres arrachés, grands arbres qui plient un peu, arrêt net
@@ -267,6 +289,20 @@ async function boot() {
         const left = lumber.hit(tree.i, player.pos);
         if (left > 0) ui.toast(left === 1 ? 'Encore 1 coup…' : `Encore ${left} coups`);
         else { ui.toast('Ça craque… l’arbre tombe !'); sound.creak(); }
+      }
+      if (kind === 'rock' && tree) {
+        // pierre : la rivelaine (pic) casse vite, la hache beaucoup moins bien
+        const tool = player.tool(), need = Math.ceil(tree.size * (tool === 'rivelaine' ? 1.4 : 3)) + 1;
+        tree.hits = (tree.hits || 0) + 1;
+        fx.burst(p, 16, [0.6, 0.57, 0.52], 2.5, 2.2, 0.06, 0.9);
+        sound.chop(0.8);
+        if (tree.hits >= need) {
+          const n = props.breakRock(tree);
+          lumber.stone += n; save();
+          fx.burst(new THREE.Vector3(tree.x, tree.y + tree.size * 0.3, tree.z), 40, [0.55, 0.52, 0.47], 4, 3, 0.18, 1.6);
+          sound.crash(0.5);
+          ui.toast(`Rocher cassé : +${n} pierres (tu en as ${lumber.stone})`);
+        } else ui.toast(`Encore ${need - tree.hits} coups${tool === 'rivelaine' ? '' : ' (la rivelaine casse plus vite)'}`);
       }
       fauna.scare(p, 14);
     };
@@ -368,8 +404,8 @@ async function boot() {
     function actionLabel() {
       if (rig.mode === 'drone') return null;
       if (G.mode === 'foot' && builder.active) {
-        const pv = builder.preview(player, lumber.wood);
-        return pv && pv.ok ? pv.label : `Pas assez de bois (${PIECES[builder.kind].cost})`;
+        const pv = builder.preview(player, { wood: lumber.wood, stone: lumber.stone });
+        return pv && pv.ok ? pv.label : pv && pv.taken ? 'Déjà construit' : `Il faut ${costText(PIECES[builder.kind].cost)}`;
       }
       if (G.mode === 'buggy') return Math.abs(buggy.speed) < 4 ? 'Descendre' : null;
       if (player.pos.distanceTo(buggy.pos) < 3.4) return 'Monter dans le buggy';
@@ -385,11 +421,18 @@ async function boot() {
       if (!label) return;
       if (label === 'Descendre') exitBuggy();
       else if (label === 'Monter dans le buggy') enterBuggy();
-      else if (label.startsWith('Ramasser')) { const p = player.nearPickup(); if (p) ui.toast(player.pick(p) + ' · bouton Outil pour changer'); }
+      else if (label.startsWith('Ramasser')) {
+        const p = player.nearPickup();
+        if (p) {
+          const name = p.name;
+          ui.toast(player.pick(p) + ' · bouton Outil pour changer');
+          if (name === 'binoculars' && !mission.done) { mission.done = true; setTimeout(() => ui.toast('Mission accomplie : tu as retrouvé les jumelles de l’explorateur !'), 1800); }
+        }
+      }
       else if (label === 'Frapper' || /lampe|umelles/.test(label)) player.strike();
       else if (label.startsWith('Poser')) {
         const sh = builder.confirm();
-        if (sh) { lumber.wood -= PIECES[sh.kind].cost; save(); ui.toast(`${PIECES[sh.kind].label} construit · il te reste ${lumber.wood} bûches`); }
+        if (sh) { const c = PIECES[sh.kind].cost; lumber.wood -= c.wood || 0; lumber.stone -= c.stone || 0; save(); ui.toast(`${PIECES[sh.kind].label} construit · reste ${lumber.wood} bois, ${lumber.stone} pierres`); }
       }
     }
     const buggyCol = [{ x: 0, z: 0, r: 1.05 }, { x: 0, z: 0, r: 1.05 }, { x: 0, z: 0, r: 1.05 }];
@@ -458,10 +501,15 @@ async function boot() {
         ui.toast(builder.active ? 'Mode construction · Outil pour changer de pièce, bouton orange pour poser' : 'Construction terminée');
       }
       if (G.mode !== 'foot' || rig.mode === 'drone') builder.active = false;
-      if (!builder.active) builder.preview(player, 0);
+      if (!builder.active) builder.preview(player, {});
       buggy.engineOn = G.mode === 'buggy' ? 1 : 0;
       if (G.mode === 'buggy') {
         buggy.update(dt, rig.mode !== 'drone' ? input : IDLE);
+        // le buggy dans l'eau : énormes gerbes qui grandissent avec la vitesse
+        const sp = Math.abs(buggy.speed);
+        if (sp > 3) for (const w of buggy.wheels) if (w.water && w.cp && Math.random() < dt * 30) {
+          fx.burst(new THREE.Vector3(w.cp.x, 0.05, w.cp.z), Math.round(4 + sp * 0.9), [0.87, 0.93, 0.96], 1.5 + sp * 0.18, 2 + sp * 0.32, 0.1 + sp * 0.006, 1.1);
+        }
         // fougères et buissons arrachés, animaux projetés
         ripT += dt;
         if (ripT > 0.1 && Math.abs(buggy.speed) > 3) {
@@ -540,6 +588,8 @@ async function boot() {
       water.update(camera, sky.weather);
       props.update(camera, dt);
       roads.update(camera);
+      footprints.update(dt);
+      birds.update(dt, camera.position);
       camp.update(dt, camera.position, U.uSunDir.value.y < 0.1);
       torchBeam.material.uniforms.uStrength.value = 0.02 + 0.08 * (1 - dayK2);
       grassField.update(camera);
@@ -552,9 +602,10 @@ async function boot() {
       ui.hud({
         speed: drone ? rig.speed : G.mode === 'buggy' ? Math.abs(buggy.speed) : player.speed,
         mode: drone ? 'Caméra libre' : G.mode === 'buggy' ? `Buggy · ${buggy.gear < 0 ? 'R' : buggy.gear + 'e'}` : builder.active ? 'Construction' : player.swimming ? 'À la nage' : 'À pied',
-        wood: lumber.wood, build: G.mode === 'foot' && !drone && (lumber.wood > 0 || builder.pieces.length > 0 || builder.active), building: builder.active,
+        wood: lumber.wood, stone: lumber.stone, build: G.mode === 'foot' && !drone && (lumber.wood > 0 || lumber.stone > 0 || builder.pieces.length > 0 || builder.active), building: builder.active,
         toolLabel: builder.active ? 'Pièce : ' + PIECES[builder.kind].label : 'Outil',
         upDown: drone || (G.mode === 'foot' && player.swimming), inBuggy: G.mode === 'buggy' && !drone, drone,
+        mission: mission.done ? '' : `Mission : retrouve la sacoche de l'explorateur au pied de la grande cascade · ${Math.round(Math.hypot(mission.pos.x - camera.position.x, mission.pos.z - camera.position.z))} m`,
         action: act, tools: G.mode === 'foot' && !drone && (player.inv.length > 0 || builder.active), fps: G.fpsAvg,
       });
       camera.updateMatrixWorld();

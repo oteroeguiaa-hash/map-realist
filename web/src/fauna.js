@@ -25,7 +25,7 @@ const SPECIES = {
   turtle: { n: 8, hab: 'lagoon', v: 0.6, far: 70, back: true, swim: true, clip: ['swim'] },
   fishschool: { n: 6, hab: 'lagoon', v: 0.8, far: 70, swim: true, clip: ['take', ''] },
   shark: { n: 3, hab: 'reef', v: 1.6, far: 110, swim: true, clip: ['swim'] },
-  seagull: { n: 30, hab: 'sky', v: 9, far: 260, back: true, fly: true, clip: ['animation', ''], call: 'seagull' },
+  seagull: { n: 40, hab: 'sky', v: 9, far: 260, back: true, fly: true, clip: ['animation', ''], call: 'seagull' },
   parrot: { n: 8, perch: true, far: 80, call: 'parrot' },
   aracari: { n: 6, perch: true, far: 70, cut: 0.42, call: 'aracari' },
   parrots: { n: 6, perch: true, far: 80, call: 'parrot' },
@@ -173,9 +173,18 @@ export class Fauna {
       a.pos.set(a.home.x + Math.cos(a.ang) * a.R, a.alt, a.home.z + Math.sin(a.ang) * a.R);
       return true;
     }
+    if (sp.hab === 'pond' && k < 4) {
+      // un groupe de crocodiles dans les eaux calmes au pied de la cascade
+      const p = w.waterfall.pool;
+      a.pool = { x: p[0], y: p[1], z: p[2], r: w.waterfall.poolR * 0.7 };
+      const an = rnd() * TAU, d = Math.sqrt(rnd()) * a.pool.r;
+      a.pos.set(p[0] + Math.cos(an) * d, p[1] + sp.swimY, p[2] + Math.sin(an) * d);
+      a.home = a.pos.clone();
+      return true;
+    }
     if (sp.hab === 'pond' && (w.ponds || []).length) {
       const ponds = [...w.ponds].sort((p, q) => Math.hypot(p.x - w.spawn.x, p.z - w.spawn.z) - Math.hypot(q.x - w.spawn.x, q.z - w.spawn.z));
-      const p = ponds[Math.floor(k / 4) % ponds.length];
+      const p = ponds[Math.floor((k - 4) / 4) % ponds.length];
       a.pool = { x: p.x, y: p.level, z: p.z, r: p.r * 0.55 };
       const an = rnd() * TAU, d = Math.sqrt(rnd()) * a.pool.r;
       a.pos.set(p.x + Math.cos(an) * d, p.level + sp.swimY, p.z + Math.sin(an) * d);
@@ -327,9 +336,12 @@ export class Fauna {
     }
     if (sp.perch) return;
     if (sp.fly) {
-      a.ang += a.dir * (sp.v / a.R) * dt;
-      const wob = Math.sin(this.t * 0.31 + a.phase * 0.07) * 4;
-      a.pos.set(a.home.x + Math.cos(a.ang) * a.R, a.alt + wob, a.home.z + Math.sin(a.ang) * a.R);
+      // trajectoire en boucles irrégulières : le rayon respire, l'altitude ondule (montées en battant, descentes en planant)
+      const Rv = a.R * (1 + 0.35 * Math.sin(this.t * 0.13 + a.phase));
+      a.ang += a.dir * (sp.v / Rv) * dt;
+      const wob = Math.sin(this.t * 0.31 + a.phase * 0.07) * 5 + Math.sin(this.t * 0.83 + a.phase) * 1.5;
+      a.climb = Math.cos(this.t * 0.31 + a.phase * 0.07) * 0.31 * 5;
+      a.pos.set(a.home.x + Math.cos(a.ang) * Rv, a.alt + wob, a.home.z + Math.sin(a.ang) * Rv);
       a.heading = Math.atan2(-Math.sin(a.ang) * a.dir, Math.cos(a.ang) * a.dir);
       a.speed = sp.v;
       return;
@@ -359,10 +371,14 @@ export class Fauna {
     let want = Math.atan2(dx, dz), dh = want - a.heading;
     while (dh > Math.PI) dh -= TAU; while (dh < -Math.PI) dh += TAU;
     const turn = (sp.swim ? 0.6 : 1.6) * dt;
-    a.heading += clamp(dh, -turn, turn);
+    const dTurn = clamp(dh, -turn, turn);
+    a.heading += dTurn;
+    a.turnRate = lerp(a.turnRate || 0, dTurn / Math.max(dt, 1e-3), 1 - Math.exp(-dt * 4));
     const vmax = a.fear > 0 && sp.run ? sp.run : sp.v;
     const v = vmax * clamp(Math.cos(dh), 0.15, 1);
+    const prevSpeed = a.speed;
     a.speed = lerp(a.speed, v, 1 - Math.exp(-dt * 3));
+    a.accel = lerp(a.accel || 0, (a.speed - prevSpeed) / Math.max(dt, 1e-3), 1 - Math.exp(-dt * 5));
     const nx = a.pos.x + Math.sin(a.heading) * a.speed * dt, nz = a.pos.z + Math.cos(a.heading) * a.speed * dt;
     if (!a.pool && !this.hab(sp.hab, nx, nz)) { a.state = 'idle'; a.t = 0.3; a.heading += Math.PI * 0.5; return; }
     a.pos.x = nx; a.pos.z = nz;
@@ -383,23 +399,41 @@ export class Fauna {
       y = (hf + hb) * 0.5 * 0.5 + a.pos.y * 0.5;
     }
     const moving = a.speed > 0.05;
-    if (!a.mix && moving) {
-      // démarche procédurale pour les modèles sans animation
+    // démarche : chaque pas fait monter/descendre et balancer le corps (même pour les modèles animés, plus discret)
+    if (moving && !sp.fly && !sp.swim && !sp.perch) {
       const f = a.speed / Math.max(a.L, 0.2) * 2.2;
       a.gait = (a.gait || 0) + f * dt * TAU;
+      const k = a.mix ? 0.4 : 1;
       if (sp.slither) yaw += Math.sin(a.gait * 0.5) * 0.22;
       else if (sp.hop) y += Math.max(0, Math.sin(a.gait)) * a.size.y * 0.12;
-      else { y += Math.abs(Math.sin(a.gait)) * a.size.y * 0.025; roll = Math.sin(a.gait) * 0.035; }
+      else { y += Math.abs(Math.sin(a.gait)) * a.size.y * 0.025 * k; roll += Math.sin(a.gait) * 0.035 * k; pitch += Math.sin(a.gait * 2) * 0.015 * k; }
+      // s'incline dans les virages, se penche en avant quand il accélère
+      roll -= clamp((a.turnRate || 0) * a.speed * 0.06, -0.12, 0.12);
+      pitch += clamp((a.accel || 0) * 0.03, -0.08, 0.08);
     }
-    if (sp.fly) { roll = -a.dir * 0.32; pitch = Math.sin(this.t * 0.5 + a.phase) * 0.06; }
-    if (sp.swim) { roll = Math.sin(a.phase * 0.9) * 0.05; pitch = Math.sin(a.phase * 0.6) * 0.04; }
+    if (sp.fly) {
+      // virage incliné et tangage selon la montée ; battements en montée, plané en descente
+      roll = -a.dir * clamp(0.22 + sp.v * sp.v / (9.81 * a.R) * 0.6, 0.15, 0.6);
+      pitch = clamp(-(a.climb || 0) * 0.08, -0.25, 0.25);
+      if (a.walk) a.walk.timeScale = lerp(a.walk.timeScale, (a.climb || 0) > -0.4 ? 1.1 : 0.12, 1 - Math.exp(-dt * 2));
+    }
+    if (sp.swim || a.pool) {
+      // nage : le corps ondule (queue), roulis et tangage doux
+      yaw += Math.sin(a.phase * (sp.v > 1 ? 2.2 : 1.4)) * 0.07;
+      roll = Math.sin(a.phase * 0.9) * 0.05 - clamp((a.turnRate || 0) * 0.3, -0.15, 0.15);
+      pitch = Math.sin(a.phase * 0.6) * 0.04;
+    }
     if (sp.perch) yaw = a.heading + Math.sin(this.t * 0.4 + a.phase) * 0.5;
     if (a.fly) { y = a.pos.y; roll = a.fly.roll; pitch = a.fly.roll * 0.5; }
+    // lissage : pas de saccades d'une image à l'autre
+    const sm = dt > 0 ? 1 - Math.exp(-dt * 10) : 1;
+    a.pS = a.pS === undefined ? pitch : lerp(a.pS, pitch, sm); a.rS = a.rS === undefined ? roll : lerp(a.rS, roll, sm);
+    if (!a.fly) { pitch = a.pS; roll = a.rS; }
     o.position.set(a.pos.x, y, a.pos.z);
     o.rotation.set(pitch, yaw, roll, 'YXZ');
     if (a.walk) {
       const nominal = sp.swim || sp.fly ? 1 : a.L * 0.55;
-      a.walk.timeScale = sp.fly || sp.swim ? 1 : clamp(a.speed / nominal, 0, 2.2);
+      if (!sp.fly) a.walk.timeScale = sp.swim ? 1 : clamp(a.speed / nominal, 0, 2.2);
       if (a.idle) { const k = clamp(a.speed / 0.3, 0, 1); a.walk.weight = k; a.idle.weight = 1 - k; a.idle.timeScale = 1; }
     }
   }

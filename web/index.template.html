@@ -73,6 +73,7 @@
   #credList a { color: var(--lagoon); }
   #droneBtns { display: flex; gap: 10px; }
   #toast { position: absolute; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translate(-50%, -8px); max-width: min(560px, calc(100% - 140px)); padding: 9px 14px; border-radius: 12px; background: var(--glass-strong); font-size: 13px; line-height: 1.35; text-align: center; opacity: 0; transition: opacity .3s, transform .3s; pointer-events: none; }
+  #mission { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); max-width: min(520px, calc(100% - 340px)); padding: 6px 12px; border-radius: 10px; background: var(--glass); font-size: 12px; line-height: 1.35; color: var(--ink); text-align: center; pointer-events: none !important; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   /* jumelles : deux optiques rondes, bords adoucis, le reste masqué */
   #bino { position: absolute; inset: 0; pointer-events: none !important; }
@@ -101,7 +102,7 @@
   <canvas id="c" aria-label="Vue 3D de l'île"></canvas>
 
   <div id="hud" hidden>
-    <div id="speedo"><span id="spd">0</span><small>km/h</small><div id="mode">Buggy</div><div id="wood" hidden><b id="woodN">0</b> bûches</div></div>
+    <div id="speedo"><span id="spd">0</span><small>km/h</small><div id="mode">Buggy</div><div id="wood" hidden><b id="woodN">0</b> bûches · <b id="stoneN">0</b> pierres</div></div>
     <div id="fps" hidden></div>
     <button id="bMenu" class="round" aria-label="Ouvrir le menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -122,6 +123,7 @@
       <button id="bBrake" class="pill" hidden>Frein</button>
     </div>
     <div id="toast" role="status"></div>
+    <div id="mission" hidden></div>
     <svg id="bino" hidden aria-hidden="true" width="100%" height="100%">
       <defs>
         <radialGradient id="lensG"><stop offset="0.86" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>
@@ -175,7 +177,7 @@
     <div class="grp">
       <button id="bReset" class="pill">Remettre le buggy sur ses roues</button>
       <button id="bCredits" class="pill">Crédits des modèles 3D</button>
-      <p class="note">Tactile : joystick pour marcher (poussé à fond pour courir), glisse à droite pour regarder. Le bouton orange change selon ce qui t’entoure : monter dans le buggy, ramasser, frapper. Abats un arbre (3 coups pour un petit, 8 pour un grand) pour récolter du bois, puis construis murs, planchers et rampes à buggy. Une route de terre part de la plage.</p>
+      <p class="note">Tactile : joystick pour marcher (poussé à fond pour courir), glisse à droite pour regarder. Le bouton orange change selon ce qui t’entoure : monter dans le buggy, ramasser, frapper. Abats un arbre (3 coups pour un petit, 8 pour un grand) pour récolter du bois, casse des rochers à la rivelaine pour la pierre, puis construis murs, murets en pierre, planchers, rampes à buggy et le grand projecteur. Une route de terre part de la plage.</p>
       <p class="note">Clavier : ZQSD ou flèches, Maj pour courir, espace pour sauter (frein dans le buggy), F pour l’action, T pour changer d’outil, B pour construire, C pour la caméra. Dans l’eau, E et A pour remonter et plonger.</p>
     </div>
   </aside>

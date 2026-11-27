@@ -79,7 +79,11 @@ export class UI {
     set('bBuild', 'textContent', s.building ? 'Terminer' : 'Construire');
     set('wood', 'hidden', !(s.wood > 0 || s.building));
     set('woodN', 'textContent', String(s.wood || 0));
+    set('wood', 'hidden', !(s.wood > 0 || s.stone > 0 || s.building));
+    set('stoneN', 'textContent', String(s.stone || 0));
     set('fps', 'textContent', `${Math.round(s.fps)} i/s`);
+    set('mission', 'hidden', !s.mission);
+    if (s.mission) set('mission', 'textContent', s.mission);
   }
   optics(bino, zoom, torch) {
     const $ = this.$;

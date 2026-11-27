@@ -293,6 +293,10 @@ export class Player {
       this.shake = 1;
       const p = new V3(best.x - dir.x * best.r, this.pos.y + 1.1, best.z - dir.z * best.r);
       this.onHit && this.onHit(p, 'tree', best);
-    } else this.onHit && this.onHit(this.pos.clone().addScaledVector(dir, 1.2), 'air');
+    } else {
+      const rock = this.props.rockAt && this.props.rockAt(this.pos.x, this.pos.z, dir.x, dir.z);
+      if (rock) { this.shake = 0.8; this.onHit && this.onHit(new V3(rock.x - dir.x * rock.size * 0.35, this.pos.y + 0.6, rock.z - dir.z * rock.size * 0.35), 'rock', rock); }
+      else this.onHit && this.onHit(this.pos.clone().addScaledVector(dir, 1.2), 'air');
+    }
   }
 }
