@@ -125,7 +125,7 @@ export class Props {
       im.castShadow = t.name !== 'sandrocks'; im.receiveShadow = true;
       im.frustumCulled = false;
       im.count = 0;
-      im.userData.R = t.name === 'sandrocks' ? 50 : Math.max(...t.size) > 6 ? 1200 : 120;
+      im.userData.R = t.name === 'sandrocks' ? 50 : t.name === 'mountain' ? 1200 : Math.max(...t.size) > 6 ? 650 : 120;
       // ombres : seulement les rochers proches (les instances sont triées par distance)
       im.userData.sc = 0;
       im.onBeforeShadow = function () { this._c = this.count; this.count = Math.min(this.count, this.userData.sc); };
@@ -162,6 +162,7 @@ export class Props {
   addCoconuts(flora) {
     const I = flora.I, rnd = mulberry32(31), T = this.T, list = [];
     for (let i = 0; i < I.n && list.length < 2500; i++) {
+      if (Math.hypot(I.x[i] - this.world.spawn.x, I.z[i] - this.world.spawn.z) > 700) continue; // près des plages du départ
       if (flora.types[I.t[i]].name !== 'palmier' || rnd() > 0.55) continue;
       const n = 1 + Math.floor(rnd() * 3);
       for (let k = 0; k < n; k++) {
@@ -169,7 +170,7 @@ export class Props {
         list.push([x, T.height(x, z) + 0.07, z, rnd() * 6.28, 0.85 + rnd() * 0.35]);
       }
     }
-    const g = new THREE.IcosahedronGeometry(0.11, 1); g.scale(1, 0.85, 1.1);
+    const g = new THREE.IcosahedronGeometry(0.11, 0); g.scale(1, 0.85, 1.1); g.computeVertexNormals();
     const mat = stdMat({ color: 0x4a3420, roughness: 0.85 }, 'coconut');
     const im = new THREE.InstancedMesh(g, mat, Math.max(1, list.length));
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new V3(), p = new V3();

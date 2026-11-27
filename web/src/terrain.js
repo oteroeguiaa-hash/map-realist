@@ -387,10 +387,11 @@ function makeTerrainMaterial(data, tex) {
       float wPath = mk.r * (1.0 - wRock * 0.6);
       if (wPath > 0.01) {
         vec2 uvP = vWP.xz / 3.2;
-        vec3 pa = texture(tPathA, uvP).rgb;
+        // piste de sable tassé (comme les photos de référence), un peu de terre dans les ornières
+        vec3 pa = mix(texture(tSandA, vWP.xz / 3.4).rgb * vec3(0.92, 0.84, 0.7), texture(tPathA, uvP).rgb, 0.25);
         vec4 pn = texture(tPathN, uvP);
         float b = hblend(wPath, hL, pn.b);
-        alb = mix(alb, pa * vec3(1.0, 0.95, 0.9), b); nT = normalize(mix(nT, decN(pn), b)); rough = mix(rough, 0.9, b);
+        alb = mix(alb, pa, b); nT = normalize(mix(nT, decN(pn), b)); rough = mix(rough, 0.9, b);
       }
       // mousse : sur les pentes douces, à l'ombre de la jungle et près de l'eau
       float wMoss = smoothstep(0.08, 0.2, slope) * (1.0 - smoothstep(0.32, 0.45, slope)) * clamp(gCanopy * 1.2 + mk.g, 0.0, 1.0) * smoothstep(0.45, 0.7, n2) * (1.0 - wSand);

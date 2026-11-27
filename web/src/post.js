@@ -158,7 +158,7 @@ class SunRaysPass extends Pass {
     this.strength = 0;
     this.expo = 1;
     this.aspect = 2;
-    this.gain = 0.6; // intensité globale des rayons
+    this.gain = 0.28; // intensité globale des rayons (discrète : pas d'image délavée face au soleil)
     this.uw = 0; // intensité des faisceaux sous l'eau
   }
   setSize(w, h) {

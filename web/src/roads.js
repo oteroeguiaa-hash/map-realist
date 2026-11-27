@@ -58,12 +58,12 @@ export class Roads {
   }
   async init(base, roads) {
     const [map, nmap] = await Promise.all([
-      loadTex(`${base}/tex/t_path_a.jpg`, { srgb: true, repeat: true, aniso: 8 }),
-      loadTex(`${base}/tex/t_path_n.jpg`, { srgb: false, repeat: true, aniso: 8 }),
+      loadTex(`${base}/tex/t_sand_a.jpg`, { srgb: true, repeat: true, aniso: 8 }), // piste de sable clair et tassé
+      loadTex(`${base}/tex/t_sand_n.jpg`, { srgb: false, repeat: true, aniso: 8 }),
     ]);
     const mat = patchMaterial(new THREE.MeshStandardMaterial({
       map, normalMap: nmap, normalScale: new THREE.Vector2(1.1, 1.1), vertexColors: true, transparent: true, depthWrite: false,
-      roughness: 0.93, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+      roughness: 0.93, color: new THREE.Color(0.92, 0.84, 0.7), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     }), { key: 'road', canopy: 0.6 });
     this.mat = mat;
     for (const r of roads) this.build(r);
