@@ -20,6 +20,7 @@ import { Camp, makeBeam } from './camp.js';
 import { Builder, PIECES, costText } from './build.js';
 import { BirdFlocks } from './birds.js';
 import { Footprints } from './footprints.js';
+import { Spray } from './spray.js';
 
 // sauvegarde locale (arbres abattus, bois, constructions) : retrouvée au retour sur ce téléphone
 const SAVE_KEY = 'mapRealist.save.v1';
@@ -250,6 +251,8 @@ async function boot() {
     const rig = new CameraRig(camera, data);
     G.controls = controls; G.rig = rig;
     const footprints = new Footprints(scene, data);
+    const spray = new Spray(scene);
+    G.spray = spray;
     G.footprints = footprints;
     let stepSide = 1;
     player.onStep = (v) => {
@@ -258,7 +261,7 @@ async function boot() {
       sound.footstep(kind, clamp(v / 4, 0.4, 1.2));
       stepSide = -stepSide;
       // dans l'eau : gerbe d'eau à chaque pas ; sur le sable : empreinte humide
-      if (kind === 'water') fx.burst(new THREE.Vector3(p.x, wl + 0.05, p.z), 6 + Math.round(v * 3), [0.86, 0.93, 0.96], 1.6 + v * 0.3, 1.6 + v * 0.4, 0.08, 0.8);
+      if (kind === 'water') spray.step(new THREE.Vector3(p.x, wl + 0.03, p.z), v);
       else if (kind === 'sand') footprints.add(p.x, p.z, player.yaw, stepSide);
     };
     buggy.ground = groundAt; buggy.groundNormal = groundNormal; buggy.onBuilt = onBuilt;
@@ -490,6 +493,7 @@ async function boot() {
       renderer.info.reset();
       U.uTime.value += dt;
       // entrées et véhicule
+      controls.carMode = G.mode === 'buggy' && rig.mode !== 'drone';
       const input = controls.read();
       if (input.camera) ui.onCamera();
       if (input.reset) buggy.reset();
@@ -507,9 +511,7 @@ async function boot() {
         buggy.update(dt, rig.mode !== 'drone' ? input : IDLE);
         // le buggy dans l'eau : énormes gerbes qui grandissent avec la vitesse
         const sp = Math.abs(buggy.speed);
-        if (sp > 3) for (const w of buggy.wheels) if (w.water && w.cp && Math.random() < dt * 30) {
-          fx.burst(new THREE.Vector3(w.cp.x, 0.05, w.cp.z), Math.round(4 + sp * 0.9), [0.87, 0.93, 0.96], 1.5 + sp * 0.18, 2 + sp * 0.32, 0.1 + sp * 0.006, 1.1);
-        }
+        if (sp > 2) for (const w of buggy.wheels) if (w.water && w.cp) spray.wheel(new THREE.Vector3(w.cp.x, 0.02, w.cp.z), buggy.vel, sp, dt);
         // fougères et buissons arrachés, animaux projetés
         ripT += dt;
         if (ripT > 0.1 && Math.abs(buggy.speed) > 3) {
@@ -589,6 +591,7 @@ async function boot() {
       props.update(camera, dt);
       roads.update(camera);
       footprints.update(dt);
+      spray.update(dt);
       birds.update(dt, camera.position);
       camp.update(dt, camera.position, U.uSunDir.value.y < 0.1);
       torchBeam.material.uniforms.uStrength.value = 0.02 + 0.08 * (1 - dayK2);

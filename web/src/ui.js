@@ -70,6 +70,9 @@ export class UI {
     set('mode', 'textContent', s.mode);
     set('droneBtns', 'hidden', !s.upDown);
     set('bBrake', 'hidden', !s.inBuggy);
+    set('wheel', 'hidden', !s.inBuggy);
+    set('pedals', 'hidden', !s.inBuggy);
+    set('stick', 'hidden', s.inBuggy);
     set('bJump', 'hidden', s.inBuggy || s.drone);
     set('bAct', 'hidden', !s.action);
     if (s.action) set('bAct', 'textContent', s.action);

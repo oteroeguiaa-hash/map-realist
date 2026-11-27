@@ -259,7 +259,7 @@ export class Buggy {
         const amt = (Math.abs(w.vlong) - 3) * 0.03 + w.slip * 0.05;
         this.fx.sand(w.cp, this.vel, amt * dt * 60, w.surface);
       }
-      if (this.fx && w.water && this.vel.length() > 2) this.fx.splash(w.cp, this.vel, dt);
+      // (les gerbes d'eau sont gérées par spray.js depuis main.js)
     }
   }
 
@@ -439,7 +439,12 @@ export class Buggy {
     this.heading = Math.atan2(f.x, f.z);
     if (this.glbWheels) {
       const dmg = this.damage || 0, mdl = this.group.children[0];
-      if (mdl) { mdl.scale.set(1 + dmg * 0.02, 1 - dmg * 0.03, 1 - dmg * 0.07); mdl.rotation.set(dmg * 0.05, dmg * 0.04, -dmg * 0.03); }
+      // déformation : on garde l'orientation de base du modèle (correction de cap calculée au chargement)
+      if (mdl) {
+        if (mdl.userData.baseYaw === undefined) mdl.userData.baseYaw = mdl.rotation.y;
+        mdl.scale.set(1 + dmg * 0.02, 1 - dmg * 0.03, 1 - dmg * 0.07);
+        mdl.rotation.set(dmg * 0.05, mdl.userData.baseYaw + dmg * 0.04, -dmg * 0.03);
+      }
       for (const o of this.glbWheels) {
         const w = this.wheels[o.i];
         const ang = ((w.contact ? (w.vlong || 0) : this.speed) + (w.spinX || 0)) / this.WR;

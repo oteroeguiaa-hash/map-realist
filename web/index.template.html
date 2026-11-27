@@ -59,6 +59,14 @@
   #knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(243,239,230,.85); box-shadow: 0 2px 10px rgba(0,0,0,.35); pointer-events: none; }
   #rbtns { position: absolute; right: max(18px, calc(env(safe-area-inset-right, 0px) + 10px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
   #bBrake, #bJump { padding: 18px 22px; font-size: 16px; }
+  /* volant + pédales (en buggy) */
+  #wheel { position: absolute; left: max(16px, calc(env(safe-area-inset-left, 0px) + 8px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: 172px; height: 172px; touch-action: none; }
+  #wheel svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 3px 8px rgba(0,0,0,.45)); }
+  #pedals { position: absolute; right: max(150px, calc(env(safe-area-inset-right, 0px) + 140px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 12px; align-items: flex-end; }
+  .pedal { width: 74px; height: 96px; border-radius: 14px; border: 1px solid var(--line); background: var(--glass-strong); font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: .06em; text-transform: uppercase; display: grid; place-content: center; gap: 2px; touch-action: none; }
+  .pedal small { font-size: 10px; letter-spacing: .1em; color: var(--ink-dim); font-weight: 500; }
+  .pedal.gas { height: 120px; background: rgba(255,122,61,.85); color: #1a0d06; border-color: transparent; }
+  .pedal:active, .pedal.on { transform: scale(.96); filter: brightness(1.15); }
   .rrow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
   #wood { margin-top: 6px; font-family: var(--display); font-size: 15px; letter-spacing: .06em; color: #f1d7a8; }
   #wood b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -108,6 +116,19 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
     <div id="stick" aria-label="Joystick : avancer, reculer, tourner"><div id="knob"></div></div>
+    <div id="wheel" hidden aria-label="Volant : tourne-le avec le doigt">
+      <svg viewBox="-100 -100 200 200" aria-hidden="true">
+        <circle r="86" fill="none" stroke="rgba(20,22,24,.92)" stroke-width="20"/>
+        <circle r="86" fill="none" stroke="rgba(243,239,230,.35)" stroke-width="2"/>
+        <path d="M-80 8 L-24 14 L-14 40 L14 40 L24 14 L80 8" fill="none" stroke="rgba(20,22,24,.92)" stroke-width="16" stroke-linejoin="round"/>
+        <circle r="24" fill="rgba(20,22,24,.95)" stroke="rgba(243,239,230,.3)" stroke-width="2"/>
+        <rect x="-5" y="-96" width="10" height="20" rx="3" fill="#ff7a3d"/>
+      </svg>
+    </div>
+    <div id="pedals" hidden>
+      <button id="bRev" class="pedal" aria-label="Frein, puis marche arrière">Frein<small>arrière</small></button>
+      <button id="bGas" class="pedal gas" aria-label="Accélérateur">Gaz</button>
+    </div>
     <div id="rbtns">
       <div id="droneBtns" hidden>
         <button id="bUp" class="round" aria-label="Monter">▲</button>
@@ -120,7 +141,7 @@
         <button id="bCam" class="pill">Caméra</button>
       </div>
       <button id="bJump" class="pill">Sauter</button>
-      <button id="bBrake" class="pill" hidden>Frein</button>
+      <button id="bBrake" class="pill" hidden>Frein à main</button>
     </div>
     <div id="toast" role="status"></div>
     <div id="mission" hidden></div>

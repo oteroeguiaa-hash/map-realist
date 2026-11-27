@@ -71,6 +71,12 @@ const shots = {
     { name: 'c_pier', setup: `G.teleport('ponton');` },
   ],
   spawn: [{ name: 'spawn', setup: '' }],
+  // buggy lancé dans l'eau peu profonde : gerbes d'eau + volant
+  splash: [{ name: 'splash', setup: `
+    const b=G.buggy, s=G.world.spawn; G.mode='buggy'; G.rig.setMode('chase');
+    let best=null; for (let r=8;r<200&&!best;r+=4) for (let a=0;a<6.28;a+=0.2){ const x=s.x+Math.cos(a)*r, z=s.z+Math.sin(a)*r, h=G.terrain.height(x,z); if(h<-0.15&&h>-0.5){best=[x,z,a];break;} }
+    b.place(best[0], best[1], best[2]+Math.PI/2); b.vel.set(Math.sin(best[2]+Math.PI/2)*14,0,Math.cos(best[2]+Math.PI/2)*14);
+    G.controls.read=()=>({throttle:1,steer:0.3,brake:0,lookX:0,lookY:0,up:false,down:false,camera:false,reset:false,fast:false});` }],
   shore: [
     { name: 'shore_low', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x+2, 2.2, s.z+8); G.rig.yaw=Math.PI*1.0; G.rig.pitch=-0.12;` },
     { name: 'shore_high', setup: `G.rig.setMode('drone'); const s=G.world.spawn; G.camera.position.set(s.x, 14, s.z-10); G.rig.yaw=Math.PI; G.rig.pitch=-0.35;` },

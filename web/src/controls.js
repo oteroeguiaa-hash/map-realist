@@ -48,6 +48,23 @@ export class Controls {
       el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('lostpointercapture', off);
     };
     hold('bBrake', 'brake'); hold('bUp', 'up'); hold('bDown', 'down'); hold('bJump', 'jumpB');
+    hold('bGas', 'gas'); hold('bRev', 'rev');
+    // volant : on le tourne avec le doigt (jusqu'à 1,5 tour à gauche ou à droite), il revient seul au centre quand on lâche
+    this.wheelAngle = 0; this.wheelHeld = false;
+    const wheel = document.getElementById('wheel'), wsvg = wheel.querySelector('svg');
+    let wId = null, lastA = 0;
+    const ang = (e) => { const r = wheel.getBoundingClientRect(); return Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2))); };
+    wheel.addEventListener('pointerdown', (e) => { e.preventDefault(); wId = e.pointerId; wheel.setPointerCapture(wId); lastA = ang(e); this.wheelHeld = true; });
+    wheel.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== wId) return;
+      const a = ang(e); let d = a - lastA;
+      if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2;
+      lastA = a;
+      this.wheelAngle = Math.max(-2.4, Math.min(2.4, this.wheelAngle + d));
+    });
+    const endW = (e) => { if (e.pointerId === wId) { wId = null; this.wheelHeld = false; } };
+    wheel.addEventListener('pointerup', endW); wheel.addEventListener('pointercancel', endW);
+    this.wheelEl = wsvg;
     const tap = (id, key) => document.getElementById(id).addEventListener('pointerdown', (e) => { e.preventDefault(); this[key] = true; });
     tap('bAct', 'act'); tap('bTool', 'tool'); tap('bBuild', 'build'); tap('bJump', 'jumpK');
     document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -56,6 +73,13 @@ export class Controls {
   read() {
     const k = this.keys;
     let throttle = -this.stick.y, steer = this.stick.x;
+    // en buggy : volant et pédales (le joystick est caché)
+    if (this.carMode) {
+      if (!this.wheelHeld) this.wheelAngle *= Math.exp(-(1 / 60) * 6); // retour au centre
+      steer = Math.max(-1, Math.min(1, this.wheelAngle / 2.4 * 1.15));
+      throttle = (this.gas ? 1 : 0) - (this.rev ? 1 : 0);
+      if (this.wheelEl) this.wheelEl.style.transform = `rotate(${this.wheelAngle}rad)`;
+    }
     if (k.has('ArrowUp') || k.has('KeyW')) throttle = 1;
     if (k.has('ArrowDown') || k.has('KeyS')) throttle = -1;
     if (k.has('ArrowLeft') || k.has('KeyA')) steer = -1;
