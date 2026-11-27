@@ -23,10 +23,10 @@ export function makeIslands(scene) {
   const N = 11;
   for (let k = 0; k < N; k++) {
     const kind = KINDS[k % KINDS.length];
-    const ang = (k / N) * Math.PI * 2 + rnd() * 0.4, dist = 2300 + rnd() * 4800;
-    const R = kind === 'archipel' ? 500 + rnd() * 500 : 350 + rnd() * 650;
-    const H = kind === 'pic' ? 260 + rnd() * 260 : kind === 'volcan' ? 300 + rnd() * 300 : kind === 'massif' ? 180 + rnd() * 180 : 90 + rnd() * 110;
-    const S = 72, g = new THREE.PlaneGeometry(R * 2.6, R * 2.6, S, S);
+    const ang = (k / N) * Math.PI * 2 + rnd() * 0.4, dist = 9000 + rnd() * 7000; // très loin : de simples silhouettes
+    const R = kind === 'archipel' ? 450 + rnd() * 400 : kind === 'volcan' ? 900 + rnd() * 700 : 350 + rnd() * 500;
+    const H = kind === 'pic' ? 160 + rnd() * 180 : kind === 'volcan' ? 220 + rnd() * 260 : kind === 'massif' ? 90 + rnd() * 110 : 40 + rnd() * 60;
+    const S = 40, g = new THREE.PlaneGeometry(R * 2.6, R * 2.6, S, S);
     g.rotateX(-Math.PI / 2);
     const pos = g.attributes.position, col = new Float32Array(pos.count * 3), seed = rnd() * 100;
     for (let i = 0; i < pos.count; i++) {
@@ -47,7 +47,7 @@ export function makeIslands(scene) {
       pos.setY(i, h);
       // couleurs : sable au ras de l'eau, forêt sur les pentes douces, roche en altitude
       const t = h / H, sand = h < 6 ? 1 : 0, rock = Math.min(1, Math.max(0, (t - 0.45) * 2.2));
-      const c = sand ? [0.62, 0.56, 0.44] : [0.11 + rock * 0.27, 0.17 + rock * 0.16, 0.08 + rock * 0.18];
+      const c = [0.035 + rock * 0.02, 0.045 + rock * 0.02, 0.05 + rock * 0.02]; void sand;
       col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2];
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));

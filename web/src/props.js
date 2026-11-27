@@ -102,11 +102,13 @@ export class Props {
     // cascade : falaises autour de l'amphithéâtre et rochers au bord du bassin
     const lip = w.waterfall.lip, dir = w.waterfall.dir, pool = w.waterfall.pool, perp = [-dir[1], dir[0]];
     const CL = keys('ncliff', 'rockface');
-    for (let k = -5; k <= 5; k++) {
-      if (Math.abs(k) < 1) continue;
-      const v = k * 6.5 + (rnd() - 0.5) * 2, u = -2 + Math.abs(k) * (0.9 + Math.abs(k) * 0.35);
+    // gorge rocheuse : trois étages de falaises feuilletées de part et d'autre de la chute (comme une vraie gorge),
+    // la chute elle-même reste dégagée sur sa largeur
+    for (let tier = 0; tier < 3; tier++) for (let k = -7; k <= 7; k++) {
+      if (Math.abs(k) < 2) continue;
+      const v = k * 5.2 + (rnd() - 0.5) * 2.5, u = -3 + Math.abs(k) * (0.8 + Math.abs(k) * 0.3) + tier * 4.5;
       const x = lip[0] + perp[0] * v + dir[0] * u, z = lip[2] + perp[1] * v + dir[1] * u;
-      if (CL.length) add(pick(CL), x, z, 7, 10, 0.25);
+      if (CL.length) add(pick(CL), x, z, 8 + tier * 2, 12 + tier * 3, 0.2 + tier * 0.08, (rnd() - 0.5) * 0.25);
     }
     for (let k = 0; k < 22; k++) {
       const a = rnd() * Math.PI * 2, r = w.waterfall.poolR + 2 + rnd() * 9;
